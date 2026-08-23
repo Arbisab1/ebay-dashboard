@@ -32,35 +32,42 @@ AUTH_URL = (
 )
 
 st.set_page_config(
-    page_title="eBay All Orders Sync & Multi-Filter Bot",
+    page_title="eBay Smart Auto-Messaging Engine",
     layout="wide",
-    page_icon="📦",
+    page_icon="⚡",
 )
 
-# --- DEFAULT TEMPLATES ---
+# --- COMPLETE DEFAULT TEMPLATES (INCLUDING NEW & CANCELLED) ---
 DEFAULT_TEMPLATES = {
+    "Brand New Order Welcome": (
+        "Hi {buyer},\n\n"
+        "Thank you so much for your new order #{order_id}! "
+        "We have received your payment and our team is currently preparing your item for quick dispatch.\n\n"
+        "Best regards,\nCustomer Care Team"
+    ),
     "Shipped Notification": (
         "Hi {buyer},\n\n"
-        "Your Order #{order_id} has been dispatched via {carrier}!\n"
+        "Great news! Your Order #{order_id} has been dispatched via {carrier}.\n"
         "Tracking Number: {tracking_number}\n\n"
         "Thank you for shopping with us!"
     ),
     "Delivered Feedback": (
         "Hi {buyer},\n\n"
         "Your Order #{order_id} has been marked as delivered! "
-        "If you are satisfied with the purchase, we would appreciate your positive feedback.\n\n"
+        "We hope you love the product. If you have a moment, please leave us a 5-star positive review on eBay.\n\n"
         "Best regards!"
     ),
-    "New Order Processing": (
+    "Order Cancellation Notice": (
         "Hi {buyer},\n\n"
-        "Thanks for ordering (Order #{order_id})! "
-        "We are getting your package prepared for shipment.\n\n"
+        "This message is regarding your cancellation request for Order #{order_id}. "
+        "Your order cancellation has been acknowledged and processed accordingly. "
+        "If you have any questions or need a refund update, feel free to reach out.\n\n"
         "Thank you!"
     ),
 }
 
 
-# --- PERSISTENCE HELPERS ---
+# --- PERSISTENCE ---
 def load_json(filepath, default):
     if os.path.exists(filepath):
         try:
@@ -126,7 +133,7 @@ def get_fresh_token(refresh_token):
     return None
 
 
-# --- FETCH ALL UNLIMITED ORDERS (AUTO PAGINATED) ---
+# --- EBAY DATA FETCH ---
 def fetch_all_ebay_orders(access_token):
     headers = {
         "Authorization": f"Bearer {access_token}",
@@ -154,7 +161,6 @@ def fetch_all_ebay_orders(access_token):
     return all_orders
 
 
-# --- SEND MESSAGE VIA XML API ---
 def send_ebay_message(access_token, item_id, buyer_username, body_text):
     xml_payload = f"""<?xml version="1.0" encoding="utf-8"?>
     <AddMemberMessageAAQToPartnerRequest xmlns="urn:ebay:apis:eBLBaseComponents">
@@ -179,16 +185,16 @@ def send_ebay_message(access_token, item_id, buyer_username, body_text):
     return "<Ack>Success</Ack>" in res.text or "<Ack>Warning</Ack>" in res.text
 
 
-# --- DASHBOARD HEADER ---
-st.title("📦 eBay Multi-Store All Orders & Status Filter Engine")
+# --- DASHBOARD UI ---
+st.title("⚡ eBay Advanced Multi-Status Messaging & Bot Hub")
 
 # --- SIDEBAR ---
 with st.sidebar:
-    st.header("➕ Connect eBay Account")
-    st.markdown(f"[🔗 **Link eBay Store**]({AUTH_URL})")
+    st.header("➕ Connect Store")
+    st.markdown(f"[🔗 **Link eBay Account**]({AUTH_URL})")
     st.caption("Authorization URL paste karein:")
     redirect_input = st.text_input("Redirected URL / Code:")
-    store_alias = st.text_input("Store Name (e.g. Account 1):")
+    store_alias = st.text_input("Store Name:")
 
     if st.button("Save Store"):
         if redirect_input and store_alias:
@@ -206,6 +212,8 @@ with st.sidebar:
                 st.rerun()
             else:
                 st.error("Authentication Failed.")
+        else:
+            st.warning("All fields are required.")
 
 stores = load_json(STORES_FILE, {})
 templates = load_json(TEMPLATES_FILE, DEFAULT_TEMPLATES)
@@ -214,25 +222,29 @@ logs = load_json(LOGS_FILE, {})
 if not stores:
     st.info("Sidebar say apna eBay account connect karein.")
 else:
-    main_tabs = st.tabs(["🏬 Store Channels & Filter", "📝 Customize Templates"])
+    main_tabs = st.tabs(["🏬 Orders & Smart Filters", "📝 Customize Templates"])
 
-    # --- TAB 2: TEMPLATES ---
+    # --- TAB 2: TEMPLATES MANAGER ---
     with main_tabs[1]:
-        st.subheader("📝 Customize Templates")
-        selected_tpl = st.selectbox(
-            "Select Template:", list(templates.keys()), key="tpl_edit_select"
+        st.subheader("📝 Customize Message Templates")
+        selected_tpl_edit = st.selectbox(
+            "Select Template to Edit:",
+            list(templates.keys()),
+            key="tpl_edit_select",
         )
         tpl_body = st.text_area(
-            "Template Text (use {buyer}, {order_id}, {tracking_number}, {carrier}):",
-            value=templates[selected_tpl],
+            "Template Content:",
+            value=templates[selected_tpl_edit],
             height=150,
+            key=f"editor_{selected_tpl_edit}",
         )
         if st.button("💾 Save Template"):
-            templates[selected_tpl] = tpl_body
+            templates[selected_tpl_edit] = tpl_body
             save_json(TEMPLATES_FILE, templates)
-            st.success("Template Saved!")
+            st.success("Template Saved Successfully!")
+            st.rerun()
 
-    # --- TAB 1: ALL ORDERS & STATUS FILTERING ---
+    # --- TAB 1: STORE ORDERS & SMART MESSAGING ---
     with main_tabs[0]:
         store_tabs = st.tabs(list(stores.keys()))
 
@@ -240,12 +252,11 @@ else:
             with store_tabs[idx]:
                 st.subheader(f"🏪 Active Store: {name}")
 
-                # Button to sync EVERYTHING
                 if st.button(
                     f"🔄 Sync ALL Orders from eBay ({name})",
                     key=f"sync_all_{name}",
                 ):
-                    with st.spinner("Syncing entire store order history..."):
+                    with st.spinner("Fetching orders from eBay..."):
                         all_orders = fetch_all_ebay_orders(
                             tokens["access_token"]
                         )
@@ -257,71 +268,122 @@ else:
                                 all_orders = fetch_all_ebay_orders(new_t)
 
                         st.session_state[f"orders_{name}"] = all_orders
-                        st.success(
-                            f"Total {len(all_orders)} Orders fetched from eBay!"
-                        )
+                        st.success(f"Loaded {len(all_orders)} Orders!")
 
                 orders = st.session_state.get(f"orders_{name}", [])
 
                 if orders:
                     st.divider()
-                    st.markdown("### 🔍 Live Order Filter")
+                    st.markdown("### 🎯 Order Filter & Smart Auto-Template")
 
                     col_filter, col_template = st.columns([2, 2])
 
+                    # Status Filter Selection including Brand New & Cancelled
+                    filter_options = [
+                        "🆕 Brand New Orders (Unfulfilled / Fresh)",
+                        "🚚 Shipped (Dispatched / With Tracking)",
+                        "📦 Delivered Orders",
+                        "❌ Cancelled Orders (Cancel In-Progress / Cancelled)",
+                        "📋 All Orders",
+                    ]
                     with col_filter:
                         status_filter = st.selectbox(
-                            "Select Order Status to Display:",
-                            [
-                                "All Orders",
-                                "Shipped (Dispatched / With Tracking)",
-                                "Delivered Orders",
-                                "Processing / Unfulfilled (New Orders)",
-                            ],
+                            "Select Target Order Status:",
+                            filter_options,
                             key=f"filter_{name}",
+                        )
+
+                    # Auto-Select matching template based on filter
+                    default_tpl_index = 0
+                    if "Brand New" in status_filter:
+                        default_tpl_index = list(templates.keys()).index(
+                            "Brand New Order Welcome"
+                        )
+                    elif "Shipped" in status_filter:
+                        default_tpl_index = list(templates.keys()).index(
+                            "Shipped Notification"
+                        )
+                    elif "Delivered" in status_filter:
+                        default_tpl_index = list(templates.keys()).index(
+                            "Delivered Feedback"
+                        )
+                    elif "Cancelled" in status_filter:
+                        default_tpl_index = list(templates.keys()).index(
+                            "Order Cancellation Notice"
                         )
 
                     with col_template:
                         chosen_template = st.selectbox(
-                            "Choose Message Template:",
+                            "Select Message Template:",
                             list(templates.keys()),
-                            key=f"tpl_pick_{name}",
+                            index=default_tpl_index,
+                            key=f"tpl_select_{name}",
                         )
 
-                    # Dynamic Filter Logic
+                    # Filter Orders Logic
                     display_orders = []
                     for o in orders:
                         f_status = o.get(
                             "orderFulfillmentStatus", "NOT_STARTED"
                         )
+                        cancel_status = (
+                            o.get("cancelStatus", {})
+                            .get("cancelState", "")
+                            .upper()
+                        )
+                        cancel_req = (
+                            o.get("cancelStatus", {})
+                            .get("cancelRequests", [])
+                        )
+                        is_cancelled = (
+                            cancel_status
+                            in ["CANCELED", "CANCEL_REQUESTED", "IN_PROGRESS"]
+                            or len(cancel_req) > 0
+                        )
+
                         plans = o.get("fulfillmentStartPlans", [])
                         has_tracking = any(
                             p.get("shippingStep", {}).get("shipmentTracking")
                             for p in plans
                         )
 
-                        if status_filter == "All Orders":
+                        if status_filter == "📋 All Orders":
                             display_orders.append(o)
-                        elif status_filter == "Shipped (Dispatched / With Tracking)":
-                            if f_status == "FULFILLED" or has_tracking:
-                                display_orders.append(o)
-                        elif status_filter == "Delivered Orders":
-                            if f_status == "FULFILLED":
+                        elif (
+                            status_filter
+                            == "❌ Cancelled Orders (Cancel In-Progress / Cancelled)"
+                        ):
+                            if is_cancelled:
                                 display_orders.append(o)
                         elif (
                             status_filter
-                            == "Processing / Unfulfilled (New Orders)"
+                            == "🆕 Brand New Orders (Unfulfilled / Fresh)"
                         ):
-                            if f_status in ["NOT_STARTED", "IN_PROGRESS"]:
+                            if (
+                                not is_cancelled
+                                and f_status in ["NOT_STARTED", "IN_PROGRESS"]
+                                and not has_tracking
+                            ):
+                                display_orders.append(o)
+                        elif (
+                            status_filter
+                            == "🚚 Shipped (Dispatched / With Tracking)"
+                        ):
+                            if not is_cancelled and (
+                                f_status == "FULFILLED" or has_tracking
+                            ):
+                                display_orders.append(o)
+                        elif status_filter == "📦 Delivered Orders":
+                            if not is_cancelled and f_status == "FULFILLED":
                                 display_orders.append(o)
 
                     st.info(
-                        f"Showing **{len(display_orders)}** orders matching `{status_filter}` (out of {len(orders)} total orders)."
+                        f"📊 Template: **`{chosen_template}`** | Filtered Target Orders: **{len(display_orders)}**"
                     )
 
-                    # Bulk Action on Filtered View
+                    # Mass Bulk Dispatch
                     if st.button(
-                        f"🚀 Send Message to All ({len(display_orders)}) Filtered Orders",
+                        f"🚀 Send '{chosen_template}' to All ({len(display_orders)}) Matched Orders",
                         key=f"bulk_send_{name}",
                     ):
                         progress_bar = st.progress(0)
@@ -337,7 +399,6 @@ else:
                                 else None
                             )
 
-                            # Extract Tracking
                             tracking_num = "Uploaded on eBay"
                             carrier_name = "Standard Courier"
                             fulfill_plans = o.get("fulfillmentStartPlans", [])
@@ -383,12 +444,12 @@ else:
 
                         save_json(LOGS_FILE, logs)
                         st.success(
-                            f"✅ {sent_count}/{len(display_orders)} customer messages sent successfully!"
+                            f"✅ {sent_count}/{len(display_orders)} messages successfully dispatched!"
                         )
 
-                    # List / Table View of Filtered Orders
+                    # Order Cards Display
                     st.divider()
-                    st.markdown("### 📋 Filtered Orders List")
+                    st.markdown("### 📦 Orders Preview & Individual Control")
 
                     for o in display_orders:
                         order_id = o.get("orderId", "")
@@ -405,42 +466,71 @@ else:
                             else "N/A"
                         )
                         f_stat = o.get("orderFulfillmentStatus", "NOT_STARTED")
-                        is_logged = f"{order_id}_{chosen_template}" in logs
+                        c_stat = o.get("cancelStatus", {}).get(
+                            "cancelState", "NONE"
+                        )
+
+                        # Tracking Details
+                        tracking_num = "Uploaded on eBay"
+                        carrier_name = "Courier"
+                        fulfill_plans = o.get("fulfillmentStartPlans", [])
+                        if fulfill_plans:
+                            track_step = fulfill_plans[0].get(
+                                "shippingStep", {}
+                            )
+                            tracking_num = track_step.get(
+                                "shipmentTracking", {}
+                            ).get("trackingNumber", "Uploaded on eBay")
+                            carrier_name = track_step.get(
+                                "shippingCarrierCode", "Courier"
+                            )
+
+                        formatted_preview = templates[chosen_template].format(
+                            buyer=buyer,
+                            order_id=order_id,
+                            tracking_number=tracking_num,
+                            carrier=carrier_name,
+                        )
+
+                        log_key = f"{order_id}_{chosen_template}"
+                        is_sent = log_key in logs
+
+                        badge_status = (
+                            f"❌ Cancelled ({c_stat})"
+                            if c_stat != "NONE"
+                            else f"Status: {f_stat}"
+                        )
 
                         with st.expander(
-                            f"Order #{order_id} | {buyer} | Status: {f_stat} | {'✅ Sent' if is_logged else '⏳ Ready'}"
+                            f"Order #{order_id} | {buyer} | {badge_status} | {'✅ Sent' if is_sent else '⏳ Ready'}"
                         ):
                             st.write(f"**Item:** {item_title}")
                             st.write(f"**Item ID:** `{item_id}`")
+                            if c_stat != "NONE":
+                                st.error(
+                                    f"Cancellation Status: **{c_stat}**"
+                                )
 
-                            single_msg = templates[chosen_template].format(
-                                buyer=buyer,
-                                order_id=order_id,
-                                tracking_number="Uploaded on eBay",
-                                carrier="Courier",
-                            )
-
-                            custom_txt = st.text_area(
-                                "Message Content:",
-                                value=single_msg,
-                                key=f"txt_{order_id}_{name}",
+                            user_msg_input = st.text_area(
+                                f"Message Preview ({chosen_template}):",
+                                value=formatted_preview,
+                                height=120,
+                                key=f"input_{order_id}_{chosen_template}_{status_filter}",
                             )
 
                             if st.button(
                                 f"✉️ Send to {buyer}",
-                                key=f"btn_single_{order_id}",
+                                key=f"btn_send_{order_id}_{chosen_template}",
                             ):
                                 if item_id != "N/A":
                                     success = send_ebay_message(
                                         tokens["access_token"],
                                         item_id,
                                         buyer,
-                                        custom_txt,
+                                        user_msg_input,
                                     )
                                     if success:
-                                        logs[
-                                            f"{order_id}_{chosen_template}"
-                                        ] = {
+                                        logs[log_key] = {
                                             "buyer": buyer,
                                             "status": "Sent",
                                             "time": datetime.now().strftime(
@@ -451,4 +541,4 @@ else:
                                         st.success(f"Sent to {buyer}!")
                                         st.rerun()
                                     else:
-                                        st.error("Failed to send.")
+                                        st.error("Failed to send message.")
