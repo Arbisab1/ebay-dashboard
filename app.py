@@ -32,17 +32,16 @@ AUTH_URL = (
 )
 
 st.set_page_config(
-    page_title="eBay Smart Auto-Messaging Engine",
+    page_title="eBay Multi-Store Manager & Bot",
     layout="wide",
     page_icon="⚡",
 )
 
-# --- COMPLETE DEFAULT TEMPLATES (INCLUDING NEW & CANCELLED) ---
 DEFAULT_TEMPLATES = {
     "Brand New Order Welcome": (
         "Hi {buyer},\n\n"
         "Thank you so much for your new order #{order_id}! "
-        "We have received your payment and our team is currently preparing your item for quick dispatch.\n\n"
+        "We have received your payment and our team is preparing your item for dispatch.\n\n"
         "Best regards,\nCustomer Care Team"
     ),
     "Shipped Notification": (
@@ -54,20 +53,18 @@ DEFAULT_TEMPLATES = {
     "Delivered Feedback": (
         "Hi {buyer},\n\n"
         "Your Order #{order_id} has been marked as delivered! "
-        "We hope you love the product. If you have a moment, please leave us a 5-star positive review on eBay.\n\n"
+        "If you are happy with your purchase, please leave us positive feedback.\n\n"
         "Best regards!"
     ),
     "Order Cancellation Notice": (
         "Hi {buyer},\n\n"
-        "This message is regarding your cancellation request for Order #{order_id}. "
-        "Your order cancellation has been acknowledged and processed accordingly. "
-        "If you have any questions or need a refund update, feel free to reach out.\n\n"
+        "This message is regarding your cancellation for Order #{order_id}. "
+        "The cancellation has been acknowledged and processed accordingly.\n\n"
         "Thank you!"
     ),
 }
 
 
-# --- PERSISTENCE ---
 def load_json(filepath, default):
     if os.path.exists(filepath):
         try:
@@ -83,7 +80,6 @@ def save_json(filepath, data):
         json.dump(data, f, indent=4)
 
 
-# --- AUTH HELPERS ---
 def clean_auth_code(input_str):
     raw = input_str.strip()
     if "code=" in raw:
@@ -133,7 +129,6 @@ def get_fresh_token(refresh_token):
     return None
 
 
-# --- EBAY DATA FETCH ---
 def fetch_all_ebay_orders(access_token):
     headers = {
         "Authorization": f"Bearer {access_token}",
@@ -185,13 +180,15 @@ def send_ebay_message(access_token, item_id, buyer_username, body_text):
     return "<Ack>Success</Ack>" in res.text or "<Ack>Warning</Ack>" in res.text
 
 
-# --- DASHBOARD UI ---
-st.title("⚡ eBay Advanced Multi-Status Messaging & Bot Hub")
+# --- DASHBOARD HEADER ---
+st.title("⚡ eBay Multi-Store Manager & Bot Dashboard")
 
-# --- SIDEBAR ---
+# --- SIDEBAR: CONNECT & DELETE STORES ---
+stores = load_json(STORES_FILE, {})
+
 with st.sidebar:
-    st.header("➕ Connect Store")
-    st.markdown(f"[🔗 **Link eBay Account**]({AUTH_URL})")
+    st.header("➕ Link eBay Account")
+    st.markdown(f"[🔗 **Link eBay Store**]({AUTH_URL})")
     st.caption("Authorization URL paste karein:")
     redirect_input = st.text_input("Redirected URL / Code:")
     store_alias = st.text_input("Store Name:")
@@ -202,25 +199,40 @@ with st.sidebar:
             status, token_data = exchange_code_for_tokens(final_code)
 
             if status == 200 and "access_token" in token_data:
-                stores = load_json(STORES_FILE, {})
                 stores[store_alias] = {
                     "access_token": token_data["access_token"],
                     "refresh_token": token_data.get("refresh_token", ""),
                 }
                 save_json(STORES_FILE, stores)
-                st.success(f"Store '{store_alias}' Connected!")
+                st.success(f"Store '{store_alias}' Linked!")
                 st.rerun()
             else:
                 st.error("Authentication Failed.")
         else:
             st.warning("All fields are required.")
 
-stores = load_json(STORES_FILE, {})
+    # --- UNLINK / DELETE STORE OPTION IN SIDEBAR ---
+    if stores:
+        st.divider()
+        st.header("🗑️ Unlink / Delete Store")
+        store_to_remove = st.selectbox(
+            "Select Store to Delete:", list(stores.keys()), key="store_to_del"
+        )
+        if st.button(
+            f"❌ Delete {store_to_remove}", type="secondary", key="del_btn"
+        ):
+            del stores[store_to_remove]
+            save_json(STORES_FILE, stores)
+            st.success(f"Store '{store_to_remove}' has been removed!")
+            st.rerun()
+
 templates = load_json(TEMPLATES_FILE, DEFAULT_TEMPLATES)
 logs = load_json(LOGS_FILE, {})
 
 if not stores:
-    st.info("Sidebar say apna eBay account connect karein.")
+    st.info(
+        "Filhal koi store link nahi hai. Sidebar say apna store connect karein."
+    )
 else:
     main_tabs = st.tabs(["🏬 Orders & Smart Filters", "📝 Customize Templates"])
 
@@ -250,7 +262,19 @@ else:
 
         for idx, (name, tokens) in enumerate(stores.items()):
             with store_tabs[idx]:
-                st.subheader(f"🏪 Active Store: {name}")
+                col_title, col_del = st.columns([3, 1])
+                with col_title:
+                    st.subheader(f"🏪 Active Store: {name}")
+                with col_del:
+                    if st.button(
+                        f"🗑️ Remove {name}",
+                        key=f"del_tab_{name}",
+                        help="Unlink this store from dashboard",
+                    ):
+                        del stores[name]
+                        save_json(STORES_FILE, stores)
+                        st.success(f"Store '{name}' unlinked!")
+                        st.rerun()
 
                 if st.button(
                     f"🔄 Sync ALL Orders from eBay ({name})",
@@ -278,7 +302,6 @@ else:
 
                     col_filter, col_template = st.columns([2, 2])
 
-                    # Status Filter Selection including Brand New & Cancelled
                     filter_options = [
                         "🆕 Brand New Orders (Unfulfilled / Fresh)",
                         "🚚 Shipped (Dispatched / With Tracking)",
@@ -293,7 +316,6 @@ else:
                             key=f"filter_{name}",
                         )
 
-                    # Auto-Select matching template based on filter
                     default_tpl_index = 0
                     if "Brand New" in status_filter:
                         default_tpl_index = list(templates.keys()).index(
@@ -320,7 +342,6 @@ else:
                             key=f"tpl_select_{name}",
                         )
 
-                    # Filter Orders Logic
                     display_orders = []
                     for o in orders:
                         f_status = o.get(
@@ -378,12 +399,11 @@ else:
                                 display_orders.append(o)
 
                     st.info(
-                        f"📊 Template: **`{chosen_template}`** | Filtered Target Orders: **{len(display_orders)}**"
+                        f"📊 Template: **`{chosen_template}`** | Target Orders: **{len(display_orders)}**"
                     )
 
-                    # Mass Bulk Dispatch
                     if st.button(
-                        f"🚀 Send '{chosen_template}' to All ({len(display_orders)}) Matched Orders",
+                        f"🚀 Send '{chosen_template}' to All ({len(display_orders)}) Orders",
                         key=f"bulk_send_{name}",
                     ):
                         progress_bar = st.progress(0)
@@ -444,10 +464,9 @@ else:
 
                         save_json(LOGS_FILE, logs)
                         st.success(
-                            f"✅ {sent_count}/{len(display_orders)} messages successfully dispatched!"
+                            f"✅ {sent_count}/{len(display_orders)} messages dispatched!"
                         )
 
-                    # Order Cards Display
                     st.divider()
                     st.markdown("### 📦 Orders Preview & Individual Control")
 
@@ -470,7 +489,6 @@ else:
                             "cancelState", "NONE"
                         )
 
-                        # Tracking Details
                         tracking_num = "Uploaded on eBay"
                         carrier_name = "Courier"
                         fulfill_plans = o.get("fulfillmentStartPlans", [])
@@ -506,10 +524,6 @@ else:
                         ):
                             st.write(f"**Item:** {item_title}")
                             st.write(f"**Item ID:** `{item_id}`")
-                            if c_stat != "NONE":
-                                st.error(
-                                    f"Cancellation Status: **{c_stat}**"
-                                )
 
                             user_msg_input = st.text_area(
                                 f"Message Preview ({chosen_template}):",
