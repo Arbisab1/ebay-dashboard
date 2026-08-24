@@ -192,7 +192,7 @@ def get_template_index(tpl_dict, target_key):
     return 0
 
 
-# Clean status parser
+# Accurate Order Status Classifier
 def get_clean_order_status(o):
     cancel_state = (
         o.get("cancelStatus", {}).get("cancelState", "").strip().upper()
@@ -212,16 +212,45 @@ def get_clean_order_status(o):
         p.get("shippingStep", {}).get("shipmentTracking") for p in plans
     )
 
-    if f_status == "FULFILLED":
-        return "DELIVERED", "📦 Delivered / Fulfilled"
-    elif has_tracking:
-        return "SHIPPED", "🚚 Shipped"
+    if not has_tracking and f_status in ["NOT_STARTED", "IN_PROGRESS"]:
+        return "NEW", "🆕 New Order"
+
+    # Check Delivery vs Shipped/In-Transit
+    is_delivered = False
+    for plan in plans:
+        ship_step = plan.get("shippingStep", {})
+        # Direct delivery date check
+        actual_del = ship_step.get("actualDeliveryDate")
+        if actual_del:
+            is_delivered = True
+            break
+
+        # Estimated delivery date comparison
+        est_max = ship_step.get("estimatedDeliveryDateMax")
+        if est_max:
+            try:
+                # Parse ISO date string
+                clean_date = est_max.replace("Z", "+00:00")
+                est_dt = datetime.fromisoformat(clean_date)
+                if (
+                    datetime.now(est_dt.tzinfo) > est_dt
+                    and (f_status == "FULFILLED" or has_tracking)
+                ):
+                    is_delivered = True
+                    break
+            except Exception:
+                pass
+
+    if is_delivered:
+        return "DELIVERED", "📦 Delivered"
+    elif has_tracking or f_status == "FULFILLED":
+        return "SHIPPED", "🚚 Shipped (In-Transit)"
     else:
         return "NEW", "🆕 New Order"
 
 
 # --- DASHBOARD HEADER ---
-st.title("⚡ eBay Multi-Store Manager & Bot Dashboard")
+st.title("⚡ eBay Multi-Store Manager & Smart Bot")
 
 # --- SIDEBAR ---
 stores = load_json(STORES_FILE, {})
@@ -343,8 +372,8 @@ else:
 
                     filter_options = [
                         "🆕 Brand New Orders (Unfulfilled)",
-                        "🚚 Shipped Orders (With Tracking)",
-                        "📦 Delivered / Completed Orders",
+                        "🚚 Shipped Orders (In-Transit / Only Tracking Added)",
+                        "📦 Delivered Orders",
                         "❌ Cancelled Orders",
                         "📋 All Orders",
                     ]
@@ -355,7 +384,7 @@ else:
                             key=f"filter_{name}",
                         )
 
-                    # Auto Select Template
+                    # Auto Select Matching Template
                     target_tpl_name = "Brand New Order Welcome"
                     if "Shipped" in status_filter:
                         target_tpl_name = "Shipped Notification"
@@ -376,7 +405,7 @@ else:
                             key=f"tpl_select_{name}",
                         )
 
-                    # Filter Orders Logic using clean helper
+                    # Strict Separation Filter Logic
                     display_orders = []
                     for o in orders:
                         order_type, _ = get_clean_order_status(o)
@@ -393,19 +422,17 @@ else:
                             if order_type == "NEW":
                                 display_orders.append(o)
                         elif (
-                            status_filter == "🚚 Shipped Orders (With Tracking)"
-                        ):
-                            if order_type in ["SHIPPED", "DELIVERED"]:
-                                display_orders.append(o)
-                        elif (
                             status_filter
-                            == "📦 Delivered / Completed Orders"
+                            == "🚚 Shipped Orders (In-Transit / Only Tracking Added)"
                         ):
+                            if order_type == "SHIPPED":
+                                display_orders.append(o)
+                        elif status_filter == "📦 Delivered Orders":
                             if order_type == "DELIVERED":
                                 display_orders.append(o)
 
                     st.info(
-                        f"📊 Template: **`{chosen_template}`** | Target Orders: **{len(display_orders)}**"
+                        f"📊 Template: **`{chosen_template}`** | Filtered Orders: **{len(display_orders)}**"
                     )
 
                     if st.button(
@@ -517,7 +544,6 @@ else:
                         log_key = f"{order_id}_{chosen_template}"
                         is_sent = log_key in logs
 
-                        # Clean Card Header without raw 'NONE' or ugly strings
                         with st.expander(
                             f"Order #{order_id} | Buyer: {buyer} | {clean_badge} | {'✅ Sent' if is_sent else '⏳ Ready'}"
                         ):
