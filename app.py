@@ -9,6 +9,10 @@ import requests
 import streamlit as st
 
 # --- CONFIGURATION ---
+WHATSAPP_NUMBER = "923001234567"  # Apna WhatsApp number yahan enter karein (Country code ke sath, without +)
+WHATSAPP_DEFAULT_MSG = "Hello Nawaz, I need help with the eBay Automation Dashboard."
+WHATSAPP_LINK = f"https://wa.me/{WHATSAPP_NUMBER}?text={requests.utils.quote(WHATSAPP_DEFAULT_MSG)}"
+
 CLIENT_ID = st.secrets.get(
     "EBAY_CLIENT_ID",
     os.getenv("EBAY_CLIENT_ID", "NawazIqb-eBayAuto-PRD-d254d2f41-10c98af7"),
@@ -40,65 +44,97 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-# --- CLEAN MODERN THEME ---
+# --- CLEAN MODERN THEME & FLOATING WHATSAPP CSS ---
 st.markdown(
-    """
+    f"""
 <style>
-    header[data-testid="stHeader"], div[data-testid="stDecoration"] {
+    header[data-testid="stHeader"], div[data-testid="stDecoration"] {{
         display: none !important;
-    }
-    .stApp {
+    }}
+    .stApp {{
         background-color: #F8FAFC !important;
         color: #0F172A !important;
         font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif !important;
-    }
-    .block-container {
+    }}
+    .block-container {{
         padding-top: 1.5rem !important;
         padding-bottom: 2.5rem !important;
-    }
-    div[data-testid="stMetric"] {
+    }}
+    div[data-testid="stMetric"] {{
         background-color: #FFFFFF !important;
         border: 1px solid #E2E8F0 !important;
         border-radius: 10px !important;
         box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05) !important;
         padding: 16px 20px !important;
-    }
-    div[data-testid="stMetricValue"] {
+    }}
+    div[data-testid="stMetricValue"] {{
         font-size: 1.85rem !important;
         font-weight: 700 !important;
         color: #2563EB !important;
-    }
-    button[kind="primary"] {
+    }}
+    button[kind="primary"] {{
         background-color: #2563EB !important;
         color: #FFFFFF !important;
         font-weight: 600 !important;
         border: none !important;
         border-radius: 8px !important;
-    }
-    button[kind="secondary"] {
+    }}
+    button[kind="secondary"] {{
         background-color: #FFFFFF !important;
         border: 1px solid #CBD5E1 !important;
         color: #334155 !important;
         border-radius: 8px !important;
-    }
-    .streamlit-expanderHeader {
+    }}
+    .streamlit-expanderHeader {{
         background-color: #FFFFFF !important;
         border: 1px solid #E2E8F0 !important;
         border-radius: 8px !important;
         color: #1E293B !important;
         font-weight: 600 !important;
-    }
-    div[data-baseweb="select"], div[data-baseweb="input"], textarea {
+    }}
+    div[data-baseweb="select"], div[data-baseweb="input"], textarea {{
         background-color: #FFFFFF !important;
         border-color: #CBD5E1 !important;
         color: #0F172A !important;
         border-radius: 8px !important;
-    }
-    section[data-testid="stSidebar"] {
+    }}
+    section[data-testid="stSidebar"] {{
         background-color: #FFFFFF !important;
         border-right: 1px solid #E2E8F0 !important;
-    }
+    }}
+
+    /* Floating WhatsApp Button */
+    .floating-whatsapp {{
+        position: fixed;
+        bottom: 25px;
+        right: 25px;
+        background-color: #25D366;
+        color: white;
+        border-radius: 50px;
+        padding: 10px 18px;
+        font-size: 14px;
+        font-weight: 600;
+        box-shadow: 0 4px 15px rgba(0, 0, 0, 0.15);
+        z-index: 999999;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        text-decoration: none;
+        transition: all 0.3s ease;
+    }}
+    .floating-whatsapp:hover {{
+        background-color: #20BA5A;
+        color: white;
+        transform: scale(1.05);
+        box-shadow: 0 6px 20px rgba(37, 211, 102, 0.4);
+    }}
 </style>
+
+<!-- Floating WhatsApp Action Link -->
+<a href="{WHATSAPP_LINK}" target="_blank" class="floating-whatsapp">
+    <img src="https://upload.wikimedia.org/wikipedia/commons/6/6b/WhatsApp.svg" width="24" height="24" alt="WhatsApp">
+    <span>Need Help? Chat with us</span>
+</a>
 """,
     unsafe_allow_html=True,
 )
@@ -522,6 +558,25 @@ with st.sidebar:
 
     selected_page = st.radio("Menu", nav_options, label_visibility="collapsed")
     st.divider()
+
+    # --- SIDEBAR WHATSAPP SUPPORT CARD ---
+    st.markdown(
+        f"""
+    <div style="padding: 12px; background: #F0FDF4; border: 1px solid #BBF7D0; border-radius: 8px; margin-bottom: 10px;">
+        <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 6px;">
+            <img src="https://upload.wikimedia.org/wikipedia/commons/6/6b/WhatsApp.svg" width="20" height="20">
+            <strong style="color: #166534; font-size: 0.9rem;">Direct Support</strong>
+        </div>
+        <p style="font-size: 0.8rem; color: #15803D; margin-bottom: 8px;">Got questions or need custom integrations?</p>
+        <a href="{WHATSAPP_LINK}" target="_blank" style="text-decoration: none;">
+            <div style="background: #22C55E; color: white; text-align: center; padding: 6px; border-radius: 6px; font-weight: 600; font-size: 0.85rem;">
+                Chat on WhatsApp
+            </div>
+        </a>
+    </div>
+    """,
+        unsafe_allow_html=True,
+    )
     st.caption("🔒 Verified eBay REST API Partner")
 
 
@@ -774,7 +829,6 @@ elif "Connect My eBay Store" in selected_page or "Link & Manage eBay Stores" in 
 
         redirect_input = st.text_input("Redirected URL / Code:")
         
-        # Pre-fill store name for client or allow admin to type
         assigned_s = st.session_state.assigned_stores[0] if st.session_state.assigned_stores and st.session_state.assigned_stores[0] != "ALL" else ""
         store_alias = st.text_input("Store Name / Label:", value=assigned_s)
 
@@ -790,7 +844,6 @@ elif "Connect My eBay Store" in selected_page or "Link & Manage eBay Stores" in 
                     }
                     save_json(STORES_FILE, stores)
                     
-                    # Update client assigned store if needed
                     u_curr = st.session_state.username
                     if u_curr in users_db:
                         users_db[u_curr]["assigned_stores"] = [store_alias]
@@ -873,7 +926,9 @@ elif selected_page == "Registered Clients Overview" and st.session_state.role ==
 # ==========================================================
 elif "Message Templates" in selected_page:
     st.markdown("## 📝 Message Templates Settings")
-    st.caption("Manage personalized messaging templates using dynamic attributes.")
+    st.caption(
+        "Manage personalized messaging templates using dynamic attributes."
+    )
 
     st.markdown(
         """
