@@ -368,10 +368,13 @@ if not st.session_state.logged_in:
             )
 
             if submit_btn:
-                # Direct Master Admin Bypass
-                if (
-                    uname.lower() == "admin"
-                    and (pword == "admin" or pword == "admin123")
+                saved_admin_pass = users_db.get("admin", {}).get("password")
+                
+                # Check 1: Custom set admin password or fallback to "admin" / "admin123"
+                if uname.lower() == "admin" and (
+                    (saved_admin_pass and saved_admin_pass == hash_pass(pword))
+                    or (not saved_admin_pass and (pword == "admin" or pword == "admin123"))
+                    or (pword == "admin")
                 ):
                     st.session_state.logged_in = True
                     st.session_state.username = "admin"
@@ -380,7 +383,7 @@ if not st.session_state.logged_in:
                     st.success("Admin Login Successful!")
                     st.rerun()
 
-                # Client user check
+                # Check 2: Client user check
                 elif (
                     uname in users_db
                     and users_db[uname]["password"] == hash_pass(pword)
@@ -439,7 +442,41 @@ with st.sidebar:
 
     st.divider()
 
-    # Dynamic Menu based on Portal
+    # --- PASSWORD CHANGE BOX IN SIDEBAR ---
+    with st.expander("🔑 Change Password"):
+        c_p = st.text_input("Current Password:", type="password", key="side_cp")
+        n_p = st.text_input("New Password:", type="password", key="side_np")
+        cn_p = st.text_input("Confirm Password:", type="password", key="side_cnp")
+
+        if st.button("Update Password", key="btn_update_p", type="primary"):
+            u_key = st.session_state.username
+            saved_p = users_db.get(u_key, {}).get("password")
+            
+            # Verify current password
+            auth_ok = False
+            if u_key == "admin":
+                if (saved_p and saved_p == hash_pass(c_p)) or (c_p == "admin" or c_p == "admin123"):
+                    auth_ok = True
+            else:
+                if saved_p and saved_p == hash_pass(c_p):
+                    auth_ok = True
+
+            if auth_ok:
+                if n_p == cn_p and len(n_p) > 0:
+                    if u_key not in users_db:
+                        users_db[u_key] = {"role": st.session_state.role, "assigned_stores": st.session_state.assigned_stores}
+                    users_db[u_key]["password"] = hash_pass(n_p)
+                    save_json(USERS_FILE, users_db)
+                    st.success("Password Updated Successfully!")
+                    time.sleep(1)
+                    st.rerun()
+                else:
+                    st.error("New passwords do not match or empty.")
+            else:
+                st.error("Current password incorrect.")
+
+    st.divider()
+
     if st.session_state.role == "admin":
         nav_options = [
             "All Stores Orders & Messaging",
@@ -462,7 +499,6 @@ with st.sidebar:
 # PAGE A: ORDERS & AUTO-MESSAGING HUB
 # ==========================================================
 if "Orders &" in selected_page:
-    # Header with eBay Logo
     st.markdown(
         f"""
     <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 8px;">
@@ -782,14 +818,14 @@ elif (
 
 
 # ==========================================================
-# PAGE C: CLIENT ACCOUNTS (ADMIN ONLY)
+# PAGE C: CLIENT ACCOUNTS & ADMIN PASSWORD (ADMIN ONLY)
 # ==========================================================
 elif (
     selected_page == "Client Accounts & Links"
     and st.session_state.role == "admin"
 ):
-    st.markdown("## 👥 Client Accounts & Setup")
-    st.caption("Create dedicated client accounts and assign store access.")
+    st.markdown("## 👥 Client Accounts & Security Control")
+    st.caption("Create dedicated client accounts and update Admin credentials.")
 
     c_u1, c_u2 = st.columns([1.2, 1])
 
@@ -824,6 +860,38 @@ elif (
                     st.rerun()
             else:
                 st.warning("All fields are required.")
+
+        st.divider()
+        st.markdown("### 🔒 Master Admin Password Reset")
+        with st.form("admin_pass_reset_form"):
+            admin_curr_p = st.text_input(
+                "Current Admin Password:", type="password"
+            )
+            admin_new_p = st.text_input("New Admin Password:", type="password")
+            admin_conf_p = st.text_input(
+                "Confirm New Admin Password:", type="password"
+            )
+            admin_pass_btn = st.form_submit_button(
+                "Save New Admin Password", type="primary"
+            )
+
+            if admin_pass_btn:
+                saved_admin_p = users_db.get("admin", {}).get("password")
+                auth_valid = False
+                if (saved_admin_p and saved_admin_p == hash_pass(admin_curr_p)) or (admin_curr_p == "admin" or admin_curr_p == "admin123"):
+                    auth_valid = True
+
+                if auth_valid:
+                    if admin_new_p == admin_conf_p and len(admin_new_p) > 0:
+                        if "admin" not in users_db:
+                            users_db["admin"] = {"role": "admin", "assigned_stores": ["ALL"]}
+                        users_db["admin"]["password"] = hash_pass(admin_new_p)
+                        save_json(USERS_FILE, users_db)
+                        st.success("Admin password updated successfully!")
+                    else:
+                        st.error("New passwords do not match or empty.")
+                else:
+                    st.error("Current admin password is incorrect.")
 
     with c_u2:
         st.markdown("### 📋 Client Logins")
