@@ -363,7 +363,7 @@ def get_clean_order_status(o):
         "CANCEL_REQUESTED",
         "IN_PROGRESS",
     ] or len(cancel_req) > 0:
-        return "CANCELLED", "❌ Cancelled"
+        return "CANCELLED", "❌ Cancelled / Refunded"
 
     f_status = o.get("orderFulfillmentStatus", "NOT_STARTED")
     instructions = o.get("fulfillmentStartInstructions", [])
@@ -413,7 +413,7 @@ def get_clean_order_status(o):
     if is_delivered:
         return "DELIVERED", "📦 Delivered"
     elif f_status == "FULFILLED" or has_tracking:
-        return "SHIPPED", "🚚 Shipped (In-Transit)"
+        return "SHIPPED", "🚚 Shipped"
     else:
         return "NEW", "🆕 New Order"
 
@@ -951,19 +951,19 @@ if "Orders &" in selected_page:
 
 
 # ==========================================================
-# PAGE B: SALES & REVENUE REPORTS
+# PAGE B: SALES & REVENUE REPORTS WITH ADVANCED STATUS SEGMENTS
 # ==========================================================
 elif selected_page == "📈 Sales & Revenue Reports":
     st.markdown(
         """
     <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 8px;">
         <img src="https://upload.wikimedia.org/wikipedia/commons/1/1b/EBay_logo.svg" width="75">
-        <h2 style="margin: 0; color: #0F172A; font-weight: 700;">Sales & Revenue Analytics</h2>
+        <h2 style="margin: 0; color: #0F172A; font-weight: 700;">Sales, Shipped & Refund Reports</h2>
     </div>
     """,
         unsafe_allow_html=True,
     )
-    st.caption("Financial performance, order breakdown, and downloadable CSV/Excel reports.")
+    st.caption("Detailed financials segmented by Completed Sales, Shipped Orders, Delivered, and Refunds/Cancellations.")
 
     if not accessible_stores:
         st.info("👋 Welcome! Your store is not connected yet.")
@@ -1026,11 +1026,9 @@ elif selected_page == "📈 Sales & Revenue Reports":
         sales_orders = st.session_state.get(f"sales_orders_{active_sales_store}", [])
 
         if sales_orders:
-            # Parse sales into structured table
-            parsed_rows = []
-            total_revenue = 0.0
+            # Parse all rows with raw status classification
+            parsed_all_rows = []
             currency_code = "USD"
-            total_items_count = 0
 
             for o in sales_orders:
                 order_id = o.get("orderId", "N/A")
@@ -1044,61 +1042,89 @@ elif selected_page == "📈 Sales & Revenue Reports":
                 currency_code = total_obj.get("currency", currency_code)
                 
                 status_raw, status_badge = get_clean_order_status(o)
-                
-                # Only sum revenue for non-cancelled orders
-                if status_raw != "CANCELLED":
-                    total_revenue += order_total
 
                 line_items = o.get("lineItems", [])
                 items_titles = []
+                total_qty = 0
                 for li in line_items:
                     qty = int(li.get("quantity", 1))
-                    total_items_count += qty
+                    total_qty += qty
                     items_titles.append(f"{li.get('title', 'Item')} (x{qty})")
 
-                parsed_rows.append({
+                parsed_all_rows.append({
                     "Order ID": order_id,
                     "Date": created_date,
                     "Buyer": buyer,
                     "Items": ", ".join(items_titles),
+                    "Quantity": total_qty,
                     "Amount": order_total,
                     "Currency": currency_code,
                     "Status": status_badge,
+                    "RawStatus": status_raw
                 })
 
-            df_sales = pd.DataFrame(parsed_rows)
-            valid_orders_count = len([r for r in parsed_rows if "Cancelled" not in r["Status"]])
-            aov = (total_revenue / valid_orders_count) if valid_orders_count > 0 else 0.0
-
             st.divider()
-            
-            # --- KPI METRICS ---
+
+            # --- STATUS SEGMENT SELECTOR ---
+            st.markdown("#### 🎯 Select Sheet Category")
+            sales_segment_options = [
+                "📊 All Successful Sales (Gross)",
+                "🚚 Shipped Orders (In-Transit)",
+                "📦 Delivered Orders (Completed)",
+                "❌ Cancelled & Refunded Orders",
+                "📋 Complete Raw Order Stream"
+            ]
+            chosen_segment = st.selectbox("View Report Sheet:", sales_segment_options, key="sales_segment_selector")
+
+            # Filter rows based on chosen segment
+            if chosen_segment == "📊 All Successful Sales (Gross)":
+                filtered_rows = [r for r in parsed_all_rows if r["RawStatus"] != "CANCELLED"]
+            elif chosen_segment == "🚚 Shipped Orders (In-Transit)":
+                filtered_rows = [r for r in parsed_all_rows if r["RawStatus"] == "SHIPPED"]
+            elif chosen_segment == "📦 Delivered Orders (Completed)":
+                filtered_rows = [r for r in parsed_all_rows if r["RawStatus"] == "DELIVERED"]
+            elif chosen_segment == "❌ Cancelled & Refunded Orders":
+                filtered_rows = [r for r in parsed_all_rows if r["RawStatus"] == "CANCELLED"]
+            else:
+                filtered_rows = parsed_all_rows
+
+            # Calculate KPI Metrics for current selection
+            segment_revenue = sum(r["Amount"] for r in filtered_rows)
+            segment_orders_count = len(filtered_rows)
+            segment_items_count = sum(r["Quantity"] for r in filtered_rows)
+            segment_aov = (segment_revenue / segment_orders_count) if segment_orders_count > 0 else 0.0
+
+            # --- KPI DISPLAY ---
             k1, k2, k3, k4 = st.columns(4)
-            k1.metric("Gross Sales Revenue", f"{currency_code} {total_revenue:,.2f}")
-            k2.metric("Completed Orders", valid_orders_count)
-            k3.metric("Avg Order Value (AOV)", f"{currency_code} {aov:,.2f}")
-            k4.metric("Total Items Sold", total_items_count)
+            metric_rev_label = "Total Refunded Amount" if "Refunded" in chosen_segment else "Total Revenue"
+            k1.metric(metric_rev_label, f"{currency_code} {segment_revenue:,.2f}")
+            k2.metric("Total Orders", segment_orders_count)
+            k3.metric("Avg Order Value (AOV)", f"{currency_code} {segment_aov:,.2f}")
+            k4.metric("Total Units Count", segment_items_count)
 
             st.divider()
 
-            # --- CSV DOWNLOAD & DATA TABLE ---
+            # --- CSV EXPORT & INTERACTIVE TABLE ---
+            df_display = pd.DataFrame(filtered_rows).drop(columns=["RawStatus"])
+
             c_head, c_dl = st.columns([3, 1])
             with c_head:
-                st.markdown("### 📋 Detailed Sales Breakdown")
+                st.markdown(f"### 📋 {chosen_segment} Sheet ({len(filtered_rows)} records)")
             with c_dl:
                 csv_buffer = io.StringIO()
-                df_sales.to_csv(csv_buffer, index=False)
+                df_display.to_csv(csv_buffer, index=False)
+                clean_seg_filename = chosen_segment.split(" ")[1].lower()
                 st.download_button(
-                    label="📥 Export Report (CSV)",
+                    label=f"📥 Download {chosen_segment.split(' ')[1]} CSV",
                     data=csv_buffer.getvalue(),
-                    file_name=f"eBay_Sales_Report_{active_sales_store}_{datetime.now().strftime('%Y%m%d')}.csv",
+                    file_name=f"eBay_{clean_seg_filename}_Report_{active_sales_store}_{datetime.now().strftime('%Y%m%d')}.csv",
                     mime="text/csv",
                     use_container_width=True,
                     type="primary"
                 )
 
             st.dataframe(
-                df_sales,
+                df_display,
                 use_container_width=True,
                 hide_index=True,
             )
