@@ -156,9 +156,10 @@ def save_json(filepath, data):
         json.dump(data, f, indent=4)
 
 
+# Force admin/admin default mapping
 DEFAULT_USERS = {
     "admin": {
-        "password": hash_pass("admin123"),
+        "password": hash_pass("admin"),
         "role": "admin",
         "assigned_stores": ["ALL"],
     }
@@ -342,6 +343,16 @@ def get_clean_order_status(o):
 # --- INITIALIZE DATABASE ---
 stores = load_json(STORES_FILE, {})
 users_db = load_json(USERS_FILE, DEFAULT_USERS)
+
+# Force overwrite admin default to "admin"
+if "admin" not in users_db or users_db["admin"].get("password") != hash_pass("admin"):
+    users_db["admin"] = {
+        "password": hash_pass("admin"),
+        "role": "admin",
+        "assigned_stores": ["ALL"],
+    }
+    save_json(USERS_FILE, users_db)
+
 templates = load_json(TEMPLATES_FILE, DEFAULT_TEMPLATES)
 logs = load_json(LOGS_FILE, {})
 
@@ -353,9 +364,8 @@ if "logged_in" not in st.session_state:
 
 
 # ==========================================================
-# 1. URL PARAMETER ROUTING (SEPARATE LINK HANDLER)
+# 1. SEPARATE AUTHENTICATION PORTALS
 # ==========================================================
-# Read parameters from URL (e.g. ?portal=client or ?portal=admin)
 params = st.query_params
 url_portal = params.get("portal", "").lower()
 preset_client_user = params.get("client", "")
@@ -363,7 +373,6 @@ preset_client_user = params.get("client", "")
 if not st.session_state.logged_in:
     c1, c2, c3 = st.columns([1, 1.5, 1])
     with c2:
-        # If client link (?portal=client or default)
         if url_portal == "admin":
             st.markdown(
                 """
@@ -397,7 +406,6 @@ if not st.session_state.logged_in:
                     else:
                         st.error("Invalid Admin Credentials.")
         else:
-            # Client Login is the default view or when ?portal=client is used
             st.markdown(
                 """
             <div style="text-align: center; padding: 22px; background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 12px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05); margin-bottom: 20px;">
@@ -493,7 +501,6 @@ with st.sidebar:
 
     st.divider()
 
-    # Dynamic Menu based on Portal
     if st.session_state.role == "admin":
         nav_options = [
             "📊 All Stores Orders & Messaging",
@@ -915,7 +922,6 @@ elif (
                     """,
                         unsafe_allow_html=True,
                     )
-                    # Generate Direct Client Link
                     client_direct_link = f"?client={u}"
                     st.code(client_direct_link, language="text")
 
