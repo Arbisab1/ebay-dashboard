@@ -40,34 +40,22 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-# --- CLEAN MODERN CORPORATE SAAS THEME (LIGHT MODE WITHOUT TOP BAR) ---
+# --- CLEAN MODERN THEME ---
 st.markdown(
     """
 <style>
-    /* Top Header aur White Bar ko hide karne ke liye */
-    header[data-testid="stHeader"] {
+    header[data-testid="stHeader"], div[data-testid="stDecoration"] {
         display: none !important;
     }
-    
-    /* Top toolbar aur decoration line remove karne ke liye */
-    div[data-testid="stDecoration"] {
-        display: none !important;
-    }
-
-    /* Main App Background */
     .stApp {
         background-color: #F8FAFC !important;
         color: #0F172A !important;
-        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif !important;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif !important;
     }
-
-    /* Top padding minimal */
     .block-container {
-        padding-top: 1rem !important;
+        padding-top: 1.2rem !important;
         padding-bottom: 2.5rem !important;
     }
-
-    /* Metric Cards */
     div[data-testid="stMetric"] {
         background-color: #FFFFFF !important;
         border: 1px solid #E2E8F0 !important;
@@ -75,62 +63,37 @@ st.markdown(
         box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05) !important;
         padding: 16px 20px !important;
     }
-
     div[data-testid="stMetricValue"] {
         font-size: 1.85rem !important;
         font-weight: 700 !important;
         color: #2563EB !important;
     }
-
-    /* Primary Corporate Buttons */
     button[kind="primary"] {
         background-color: #2563EB !important;
         color: #FFFFFF !important;
         font-weight: 600 !important;
         border: none !important;
         border-radius: 8px !important;
-        box-shadow: 0 1px 2px rgba(37, 99, 235, 0.2) !important;
-        transition: all 0.2s ease !important;
     }
-
-    button[kind="primary"]:hover {
-        background-color: #1D4ED8 !important;
-        box-shadow: 0 4px 6px -1px rgba(37, 99, 235, 0.3) !important;
-    }
-
-    /* Secondary Buttons */
     button[kind="secondary"] {
         background-color: #FFFFFF !important;
         border: 1px solid #CBD5E1 !important;
         color: #334155 !important;
         border-radius: 8px !important;
-        font-weight: 500 !important;
     }
-
-    button[kind="secondary"]:hover {
-        background-color: #F1F5F9 !important;
-        border-color: #94A3B8 !important;
-    }
-
-    /* Expander Container */
     .streamlit-expanderHeader {
         background-color: #FFFFFF !important;
         border: 1px solid #E2E8F0 !important;
         border-radius: 8px !important;
         color: #1E293B !important;
         font-weight: 600 !important;
-        box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03) !important;
     }
-
-    /* Inputs, Selectboxes, Textareas */
     div[data-baseweb="select"], div[data-baseweb="input"], textarea {
         background-color: #FFFFFF !important;
         border-color: #CBD5E1 !important;
         color: #0F172A !important;
         border-radius: 8px !important;
     }
-
-    /* Sidebar Clean Styling */
     section[data-testid="stSidebar"] {
         background-color: #FFFFFF !important;
         border-right: 1px solid #E2E8F0 !important;
@@ -390,54 +353,95 @@ if "logged_in" not in st.session_state:
 
 
 # ==========================================================
-# 1. CLEAN MODERN LOGIN SCREEN
+# 1. SEPARATE AUTHENTICATION PORTALS (ADMIN vs CLIENT)
 # ==========================================================
 if not st.session_state.logged_in:
-    c1, c2, c3 = st.columns([1, 1.5, 1])
+    c1, c2, c3 = st.columns([1, 1.6, 1])
     with c2:
-        st.markdown(
-            """
-        <div style="text-align: center; padding: 24px 20px; background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 12px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05); margin-bottom: 20px;">
-            <div style="font-size: 2rem; margin-bottom: 4px;">💼</div>
-            <h2 style="margin: 0; color: #0F172A; font-weight: 700;">eBay Cloud Hub</h2>
-            <p style="margin-top: 4px; color: #64748B; font-size: 0.9rem;">Enterprise Multi-Account Automation Platform</p>
-        </div>
-        """,
-            unsafe_allow_html=True,
+        portal_type = st.radio(
+            "Select Portal:",
+            ["👤 Client Workspace Login", "👑 Master Admin Portal"],
+            horizontal=True,
         )
 
-        with st.form("login_form"):
-            uname = st.text_input("Username")
-            pword = st.text_input("Password", type="password")
-            st.write("")
-            submit_btn = st.form_submit_button(
-                "Sign In",
-                use_container_width=True,
-                type="primary",
+        if portal_type == "👑 Master Admin Portal":
+            st.markdown(
+                """
+            <div style="text-align: center; padding: 20px; background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 12px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05); margin-bottom: 20px;">
+                <div style="font-size: 2rem;">👑</div>
+                <h3 style="margin: 0; color: #0F172A; font-weight: 700;">Master Admin Login</h3>
+                <p style="margin-top: 4px; color: #64748B; font-size: 0.85rem;">Platform Configuration & Multi-Store Management</p>
+            </div>
+            """,
+                unsafe_allow_html=True,
             )
+            with st.form("admin_login_form"):
+                admin_u = st.text_input("Admin Username")
+                admin_p = st.text_input("Admin Password", type="password")
+                submit_admin = st.form_submit_button(
+                    "Sign In as Admin", use_container_width=True, type="primary"
+                )
 
-            if submit_btn:
-                if (
-                    uname in users_db
-                    and users_db[uname]["password"] == hash_pass(pword)
-                ):
-                    st.session_state.logged_in = True
-                    st.session_state.username = uname
-                    st.session_state.role = users_db[uname]["role"]
-                    st.session_state.assigned_stores = users_db[uname].get(
-                        "assigned_stores", []
-                    )
-                    st.success(f"Welcome back, {uname}!")
-                    st.rerun()
-                else:
-                    st.error("Invalid username or password.")
+                if submit_admin:
+                    if (
+                        admin_u in users_db
+                        and users_db[admin_u]["role"] == "admin"
+                        and users_db[admin_u]["password"] == hash_pass(admin_p)
+                    ):
+                        st.session_state.logged_in = True
+                        st.session_state.username = admin_u
+                        st.session_state.role = "admin"
+                        st.session_state.assigned_stores = ["ALL"]
+                        st.success("Welcome, Master Admin!")
+                        st.rerun()
+                    else:
+                        st.error("Invalid Master Admin credentials.")
+
+        else:
+            st.markdown(
+                """
+            <div style="text-align: center; padding: 20px; background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 12px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05); margin-bottom: 20px;">
+                <div style="font-size: 2rem;">👤</div>
+                <h3 style="margin: 0; color: #0F172A; font-weight: 700;">Client Store Portal</h3>
+                <p style="margin-top: 4px; color: #64748B; font-size: 0.85rem;">Sign in to access your store's live orders & messaging</p>
+            </div>
+            """,
+                unsafe_allow_html=True,
+            )
+            with st.form("client_login_form"):
+                client_u = st.text_input("Username")
+                client_p = st.text_input("Password", type="password")
+                submit_client = st.form_submit_button(
+                    "Sign In to My Store",
+                    use_container_width=True,
+                    type="primary",
+                )
+
+                if submit_client:
+                    if (
+                        client_u in users_db
+                        and users_db[client_u]["role"] == "client"
+                        and users_db[client_u]["password"]
+                        == hash_pass(client_p)
+                    ):
+                        st.session_state.logged_in = True
+                        st.session_state.username = client_u
+                        st.session_state.role = "client"
+                        st.session_state.assigned_stores = users_db[
+                            client_u
+                        ].get("assigned_stores", [])
+                        st.success(f"Welcome, {client_u}!")
+                        st.rerun()
+                    else:
+                        st.error("Invalid Client credentials.")
     st.stop()
 
 
 # ==========================================================
-# 2. LOGGED IN CORPORATE SAAS DASHBOARD
+# 2. LOGGED IN PORTALS (SEPARATED LAYOUTS)
 # ==========================================================
 
+# Determine Accessible Stores
 if st.session_state.role == "admin":
     accessible_stores = stores
 else:
@@ -449,16 +453,13 @@ else:
 
 # --- SIDEBAR ---
 with st.sidebar:
+    if st.session_state.role == "admin":
+        st.markdown("### 👑 **Admin Console**")
+    else:
+        st.markdown("### 👤 **Client Workspace**")
+
     st.markdown(
-        """
-    <div style="padding: 10px 0 14px 0; border-bottom: 1px solid #E2E8F0; margin-bottom: 15px;">
-        <span style="font-size: 1.25rem; color: #0F172A; font-weight: 700;">💼 eBay Hub</span>
-    </div>
-    """,
-        unsafe_allow_html=True,
-    )
-    st.markdown(
-        f"**User:** `{st.session_state.username}`  \n**Role:** `{st.session_state.role.upper()}`"
+        f"**User:** `{st.session_state.username}`  \n**Status:** `ACTIVE`"
     )
 
     if st.button("Logout", use_container_width=True, type="secondary"):
@@ -470,54 +471,60 @@ with st.sidebar:
 
     st.divider()
 
-    # --- QUICK PASSWORD CHANGE IN SIDEBAR ---
-    with st.expander("🔑 Change My Password"):
-        curr_pass = st.text_input("Current Password:", type="password", key="side_cur_pass")
-        new_pass = st.text_input("New Password:", type="password", key="side_new_pass")
-        conf_pass = st.text_input("Confirm New Password:", type="password", key="side_conf_pass")
-        
-        if st.button("Update Password", key="side_btn_up_pass", type="primary"):
-            user_key = st.session_state.username
-            if users_db[user_key]["password"] == hash_pass(curr_pass):
-                if new_pass == conf_pass and len(new_pass) > 0:
-                    users_db[user_key]["password"] = hash_pass(new_pass)
+    with st.expander("🔑 Change Password"):
+        c_p = st.text_input("Current Password:", type="password", key="side_cp")
+        n_p = st.text_input("New Password:", type="password", key="side_np")
+        cn_p = st.text_input(
+            "Confirm Password:", type="password", key="side_cnp"
+        )
+
+        if st.button("Update", key="btn_update_p", type="primary"):
+            u_key = st.session_state.username
+            if users_db[u_key]["password"] == hash_pass(c_p):
+                if n_p == cn_p and len(n_p) > 0:
+                    users_db[u_key]["password"] = hash_pass(n_p)
                     save_json(USERS_FILE, users_db)
-                    st.success("Password successfully changed!")
+                    st.success("Password Updated!")
                     time.sleep(1)
                     st.rerun()
                 else:
-                    st.error("New passwords do not match.")
+                    st.error("Passwords do not match.")
             else:
                 st.error("Current password incorrect.")
 
     st.divider()
-    st.markdown("##### Navigation")
 
-    nav_options = [
-        "📊 Orders & Auto-Messaging",
-        "➕ Store Management",
-        "📝 Template Settings",
-    ]
+    # Dynamic Menu based on Portal
     if st.session_state.role == "admin":
-        nav_options.append("👥 User Access Control")
+        nav_options = [
+            "📊 All Stores Orders & Messaging",
+            "➕ Link & Manage eBay Stores",
+            "👥 Client Accounts & Security",
+            "📝 Global Message Templates",
+        ]
+    else:
+        nav_options = [
+            "📊 My Orders & Auto-Messaging",
+            "📝 My Message Templates",
+        ]
 
     selected_page = st.radio("Menu", nav_options, label_visibility="collapsed")
     st.divider()
-    st.caption("🔒 Verified eBay REST API Partner")
+    st.caption("🔒 256-Bit Encrypted Session")
 
 
 # ==========================================================
-# PAGE 1: ORDERS & MESSAGING HUB
+# PAGE A: ORDERS & AUTO-MESSAGING HUB (CLIENT & ADMIN)
 # ==========================================================
-if selected_page == "📊 Orders & Auto-Messaging":
-    st.markdown("## 📊 Orders & Messaging Control")
+if "Orders &" in selected_page:
+    st.markdown(f"## 📊 {selected_page}")
     st.caption(
-        "Sync live store orders, apply smart fulfillment filters, and dispatch customer updates."
+        "Live eBay order stream, fulfillment status segmentation, and auto-dispatch."
     )
 
     if not accessible_stores:
         st.warning(
-            "No stores are currently linked or assigned. Please link an account in **'Store Management'**."
+            "No store accounts are currently assigned or linked to your profile."
         )
     else:
         active_store_name = st.selectbox(
@@ -548,7 +555,6 @@ if selected_page == "📊 Orders & Auto-Messaging":
 
         if orders:
             st.divider()
-
             col_filter, col_template = st.columns([2, 2])
 
             filter_options = [
@@ -663,11 +669,11 @@ if selected_page == "📊 Orders & Auto-Messaging":
 
                 save_json(LOGS_FILE, logs)
                 st.success(
-                    f"✅ {sent_count}/{len(display_orders)} messages successfully dispatched!"
+                    f"✅ {sent_count}/{len(display_orders)} messages dispatched!"
                 )
 
             st.divider()
-            st.markdown("### 📋 Order List & Message Customizer")
+            st.markdown("### 📋 Order List & Direct Actions")
 
             for o in display_orders:
                 order_id = o.get("orderId", "")
@@ -720,7 +726,7 @@ if selected_page == "📊 Orders & Auto-Messaging":
 
                     with c_act:
                         user_msg_input = st.text_area(
-                            f"Live Preview ({chosen_template}):",
+                            f"Preview ({chosen_template}):",
                             value=formatted_preview,
                             height=110,
                             key=f"input_{order_id}_{chosen_template}_{status_filter}",
@@ -754,26 +760,27 @@ if selected_page == "📊 Orders & Auto-Messaging":
 
 
 # ==========================================================
-# PAGE 2: STORE MANAGEMENT
+# PAGE B: LINK & MANAGE STORES (ADMIN ONLY)
 # ==========================================================
-elif selected_page == "➕ Store Management":
-    st.markdown("## ➕ Store Management")
+elif (
+    selected_page == "➕ Link & Manage eBay Stores"
+    and st.session_state.role == "admin"
+):
+    st.markdown("## ➕ Store Management Console")
     st.caption(
-        "Authenticate new eBay accounts via OAuth or manage existing store integrations."
+        "Authorize production eBay accounts via OAuth or manage existing connections."
     )
 
     c_link, c_manage = st.columns([1.2, 1])
 
     with c_link:
         st.markdown("### 🔗 Authorize New Store")
-        st.info(
-            "Step 1: Click the authorization link below to authenticate with eBay:"
-        )
+        st.info("Step 1: Click the authorization link to sign in via eBay:")
         st.markdown(f"👉 [**Authorize with eBay (Click Here)**]({AUTH_URL})")
         st.write("")
 
         redirect_input = st.text_input("Redirected URL / Code:")
-        store_alias = st.text_input("Store Label (e.g. ASA Deals UK):")
+        store_alias = st.text_input("Store Label (e.g. Store 1 UK):")
 
         if st.button("Complete Authorization", type="primary"):
             if redirect_input and store_alias:
@@ -795,10 +802,10 @@ elif selected_page == "➕ Store Management":
 
     with c_manage:
         st.markdown("### 🏬 Connected Stores")
-        if not accessible_stores:
+        if not stores:
             st.info("No stores linked yet.")
         else:
-            for s_name in list(accessible_stores.keys()):
+            for s_name in list(stores.keys()):
                 with st.container():
                     st.markdown(
                         f"""
@@ -821,10 +828,104 @@ elif selected_page == "➕ Store Management":
 
 
 # ==========================================================
-# PAGE 3: TEMPLATE SETTINGS
+# PAGE C: CLIENT ACCOUNTS & ADMIN SECURITY (ADMIN ONLY)
 # ==========================================================
-elif selected_page == "📝 Template Settings":
-    st.markdown("## 📝 Template Settings")
+elif (
+    selected_page == "👥 Client Accounts & Security"
+    and st.session_state.role == "admin"
+):
+    st.markdown("## 👥 Client Accounts & Access Control")
+    st.caption("Create dedicated client accounts and assign store access.")
+
+    c_u1, c_u2 = st.columns([1.2, 1])
+
+    with c_u1:
+        st.markdown("### ➕ Create New Client Login")
+        new_uname = st.text_input("Client Username:")
+        new_pword = st.text_input("Client Password:", type="password")
+        store_choices = list(stores.keys())
+        assigned_store = st.selectbox(
+            "Assign Store Access:",
+            store_choices if store_choices else ["No stores connected"],
+        )
+
+        if st.button("Create Client Account", type="primary"):
+            if (
+                new_uname
+                and new_pword
+                and assigned_store != "No stores connected"
+            ):
+                if new_uname in users_db:
+                    st.error("Username already exists!")
+                else:
+                    users_db[new_uname] = {
+                        "password": hash_pass(new_pword),
+                        "role": "client",
+                        "assigned_stores": [assigned_store],
+                    }
+                    save_json(USERS_FILE, users_db)
+                    st.success(
+                        f"Account for '{new_uname}' created successfully!"
+                    )
+                    st.rerun()
+            else:
+                st.warning("All fields are required.")
+
+        st.divider()
+        st.markdown("### 🔒 Master Admin Password Reset")
+        with st.form("admin_pass_reset_form"):
+            admin_curr_p = st.text_input(
+                "Current Admin Password:", type="password"
+            )
+            admin_new_p = st.text_input("New Admin Password:", type="password")
+            admin_conf_p = st.text_input(
+                "Confirm New Admin Password:", type="password"
+            )
+            admin_pass_btn = st.form_submit_button(
+                "Save New Admin Password", type="primary"
+            )
+
+            if admin_pass_btn:
+                if users_db["admin"]["password"] == hash_pass(admin_curr_p):
+                    if admin_new_p == admin_conf_p and len(admin_new_p) > 0:
+                        users_db["admin"]["password"] = hash_pass(admin_new_p)
+                        save_json(USERS_FILE, users_db)
+                        st.success("Admin password updated successfully!")
+                    else:
+                        st.error("New passwords do not match.")
+                else:
+                    st.error("Current admin password is incorrect.")
+
+    with c_u2:
+        st.markdown("### 📋 Active Client Logins")
+        for u, data in users_db.items():
+            if u != "admin":
+                with st.container():
+                    st.markdown(
+                        f"""
+                    <div style="padding: 10px 14px; background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 8px; margin-bottom: 8px;">
+                        <strong>👤 {u}</strong><br>
+                        <small style="color: #64748B;">Assigned Store: {data.get('assigned_stores')}</small>
+                    </div>
+                    """,
+                        unsafe_allow_html=True,
+                    )
+                    if st.button(
+                        f"🗑️ Delete Client {u}",
+                        key=f"del_user_{u}",
+                        type="secondary",
+                    ):
+                        del users_db[u]
+                        save_json(USERS_FILE, users_db)
+                        st.success(f"Client '{u}' removed!")
+                        st.rerun()
+
+
+# ==========================================================
+# PAGE D: MESSAGE TEMPLATES (CLIENT & ADMIN)
+# ==========================================================
+elif "Message Templates" in selected_page:
+    st.markdown("## 📝 Message Templates Settings")
     st.caption(
         "Manage personalized messaging templates using dynamic attributes."
     )
@@ -855,93 +956,3 @@ elif selected_page == "📝 Template Settings":
         save_json(TEMPLATES_FILE, templates)
         st.success(f"Template '{selected_tpl_edit}' saved successfully!")
         st.rerun()
-
-
-# ==========================================================
-# PAGE 4: USER ACCESS CONTROL & ADMIN PASSWORD MANAGEMENT
-# ==========================================================
-elif (
-    selected_page == "👥 User Access Control"
-    and st.session_state.role == "admin"
-):
-    st.markdown("## 👥 User Access & Security Control")
-    st.caption(
-        "Create client accounts, assign store permissions, and reset user/admin passwords."
-    )
-
-    c_u1, c_u2 = st.columns([1.2, 1])
-
-    with c_u1:
-        st.markdown("### ➕ Create Client User")
-        new_uname = st.text_input("Username:")
-        new_pword = st.text_input("Password:", type="password")
-        store_choices = list(stores.keys())
-        assigned_store = st.selectbox(
-            "Assign Store:",
-            store_choices if store_choices else ["No stores connected"],
-        )
-
-        if st.button("Create Account", type="primary"):
-            if (
-                new_uname
-                and new_pword
-                and assigned_store != "No stores connected"
-            ):
-                if new_uname in users_db:
-                    st.error("Username already exists!")
-                else:
-                    users_db[new_uname] = {
-                        "password": hash_pass(new_pword),
-                        "role": "client",
-                        "assigned_stores": [assigned_store],
-                    }
-                    save_json(USERS_FILE, users_db)
-                    st.success(
-                        f"Account for '{new_uname}' created successfully!"
-                    )
-                    st.rerun()
-            else:
-                st.warning("All fields are required.")
-
-        st.divider()
-        st.markdown("### 🔒 Change Admin Password")
-        with st.form("admin_pass_reset_form"):
-            admin_curr_p = st.text_input("Current Admin Password:", type="password")
-            admin_new_p = st.text_input("New Admin Password:", type="password")
-            admin_conf_p = st.text_input("Confirm New Admin Password:", type="password")
-            admin_pass_btn = st.form_submit_button("Save New Admin Password", type="primary")
-
-            if admin_pass_btn:
-                if users_db["admin"]["password"] == hash_pass(admin_curr_p):
-                    if admin_new_p == admin_conf_p and len(admin_new_p) > 0:
-                        users_db["admin"]["password"] = hash_pass(admin_new_p)
-                        save_json(USERS_FILE, users_db)
-                        st.success("Admin password updated successfully!")
-                    else:
-                        st.error("New passwords do not match.")
-                else:
-                    st.error("Current admin password is incorrect.")
-
-    with c_u2:
-        st.markdown("### 📋 Active Users")
-        for u, data in users_db.items():
-            with st.container():
-                st.markdown(
-                    f"""
-                <div style="padding: 10px 14px; background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 8px; margin-bottom: 8px;">
-                    <strong>👤 {u}</strong> ({data['role'].upper()})<br>
-                    <small style="color: #64748B;">Assigned: {data.get('assigned_stores')}</small>
-                </div>
-                """,
-                    unsafe_allow_html=True,
-                )
-                if u != "admin":
-                    if st.button(
-                        f"🗑️ Delete User {u}",
-                        key=f"del_user_{u}",
-                        type="secondary",
-                    ):
-                        del users_db[u]
-                        save_json(USERS_FILE, users_db)
-                        st.success(f"User '{u}' removed!")
-                        st.rerun()
