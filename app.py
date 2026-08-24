@@ -353,18 +353,27 @@ def get_template_index(tpl_dict, target_key):
 
 
 def get_clean_order_status(o):
-    cancel_state = (
-        o.get("cancelStatus", {}).get("cancelState", "").strip().upper()
-    )
-    cancel_req = o.get("cancelStatus", {}).get("cancelRequests", [])
-    if cancel_state in [
-        "CANCELED",
-        "CANCELLED",
-        "CANCEL_REQUESTED",
-        "IN_PROGRESS",
-    ] or len(cancel_req) > 0:
-        return "CANCELLED", "❌ Cancelled / Refunded"
+    # 1. Check for True Payment Refunds
+    payment_summary = o.get("paymentSummary", {})
+    refunds_list = payment_summary.get("refunds", [])
+    total_refunded_val = 0.0
+    for r in refunds_list:
+        try:
+            total_refunded_val += float(r.get("amount", {}).get("value", 0.0))
+        except Exception:
+            pass
 
+    payment_status = o.get("orderPaymentStatus", "").upper()
+    if total_refunded_val > 0 or payment_status in ["REFUNDED", "PARTIALLY_REFUNDED"]:
+        return "REFUNDED", "💸 Refunded"
+
+    # 2. Check for Pure Cancellations
+    cancel_state = o.get("cancelStatus", {}).get("cancelState", "").strip().upper()
+    cancel_req = o.get("cancelStatus", {}).get("cancelRequests", [])
+    if cancel_state in ["CANCELED", "CANCELLED", "CANCEL_REQUESTED", "IN_PROGRESS"] or len(cancel_req) > 0:
+        return "CANCELLED", "❌ Cancelled"
+
+    # 3. Check for Delivery & Shipping
     f_status = o.get("orderFulfillmentStatus", "NOT_STARTED")
     instructions = o.get("fulfillmentStartInstructions", [])
     has_tracking = False
@@ -391,17 +400,10 @@ def get_clean_order_status(o):
     for item in o.get("lineItems", []):
         if item.get("deliveryInfo", {}).get("actualDeliveryDate"):
             is_delivered = True
-        status_text = (
-            item.get("deliveryInfo", {}).get("deliveryStatus", "").upper()
-        )
+        status_text = item.get("deliveryInfo", {}).get("deliveryStatus", "").upper()
         if status_text == "DELIVERED":
             is_delivered = True
-        elif status_text in [
-            "SHIPPED",
-            "IN_TRANSIT",
-            "OUT_FOR_DELIVERY",
-            "DROPPED_OFF",
-        ]:
+        elif status_text in ["SHIPPED", "IN_TRANSIT", "OUT_FOR_DELIVERY", "DROPPED_OFF"]:
             has_tracking = True
 
     for f in o.get("fulfillments", []) + o.get("shippingFulfillments", []):
@@ -740,6 +742,7 @@ if "Orders &" in selected_page:
                 "🚚 Shipped Orders (In-Transit)",
                 "📦 Delivered Orders",
                 "❌ Cancelled Orders",
+                "💸 Refunded Orders",
             ]
             with col_filter:
                 status_filter = st.selectbox("Target Filter Group:", filter_options, key="status_filter_select")
@@ -749,7 +752,7 @@ if "Orders &" in selected_page:
                 target_tpl_name = "Shipped Notification"
             elif "Delivered" in status_filter:
                 target_tpl_name = "Delivered Feedback"
-            elif "Cancelled" in status_filter:
+            elif "Cancelled" in status_filter or "Refunded" in status_filter:
                 target_tpl_name = "Order Cancellation Notice"
 
             default_tpl_index = get_template_index(templates, target_tpl_name)
@@ -770,6 +773,9 @@ if "Orders &" in selected_page:
                     display_orders.append(o)
                 elif status_filter == "❌ Cancelled Orders":
                     if order_type == "CANCELLED":
+                        display_orders.append(o)
+                elif status_filter == "💸 Refunded Orders":
+                    if order_type == "REFUNDED":
                         display_orders.append(o)
                 elif status_filter == "🆕 Brand New Orders (Unfulfilled)":
                     if order_type == "NEW":
@@ -951,19 +957,19 @@ if "Orders &" in selected_page:
 
 
 # ==========================================================
-# PAGE B: SALES & REVENUE REPORTS WITH ADVANCED STATUS SEGMENTS
+# PAGE B: SALES & REVENUE REPORTS WITH DISTINCT CANCEL & REFUND
 # ==========================================================
 elif selected_page == "📈 Sales & Revenue Reports":
     st.markdown(
         """
     <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 8px;">
         <img src="https://upload.wikimedia.org/wikipedia/commons/1/1b/EBay_logo.svg" width="75">
-        <h2 style="margin: 0; color: #0F172A; font-weight: 700;">Sales, Shipped & Refund Reports</h2>
+        <h2 style="margin: 0; color: #0F172A; font-weight: 700;">Sales, Cancellations & Refunds Reports</h2>
     </div>
     """,
         unsafe_allow_html=True,
     )
-    st.caption("Detailed financials segmented by Completed Sales, Shipped Orders, Delivered, and Refunds/Cancellations.")
+    st.caption("Financial performance with distinct segmented sheets for Cancellations vs Actual Refunds.")
 
     if not accessible_stores:
         st.info("👋 Welcome! Your store is not connected yet.")
@@ -1026,7 +1032,6 @@ elif selected_page == "📈 Sales & Revenue Reports":
         sales_orders = st.session_state.get(f"sales_orders_{active_sales_store}", [])
 
         if sales_orders:
-            # Parse all rows with raw status classification
             parsed_all_rows = []
             currency_code = "USD"
 
@@ -1065,26 +1070,29 @@ elif selected_page == "📈 Sales & Revenue Reports":
 
             st.divider()
 
-            # --- STATUS SEGMENT SELECTOR ---
+            # --- STATUS SEGMENT SELECTOR (CANCELLED & REFUNDED SEPARATED) ---
             st.markdown("#### 🎯 Select Sheet Category")
             sales_segment_options = [
                 "📊 All Successful Sales (Gross)",
                 "🚚 Shipped Orders (In-Transit)",
                 "📦 Delivered Orders (Completed)",
-                "❌ Cancelled & Refunded Orders",
+                "❌ Cancelled Orders (Unfulfilled)",
+                "💸 Refunded Orders (Payment Refunded)",
                 "📋 Complete Raw Order Stream"
             ]
             chosen_segment = st.selectbox("View Report Sheet:", sales_segment_options, key="sales_segment_selector")
 
             # Filter rows based on chosen segment
             if chosen_segment == "📊 All Successful Sales (Gross)":
-                filtered_rows = [r for r in parsed_all_rows if r["RawStatus"] != "CANCELLED"]
+                filtered_rows = [r for r in parsed_all_rows if r["RawStatus"] not in ["CANCELLED", "REFUNDED"]]
             elif chosen_segment == "🚚 Shipped Orders (In-Transit)":
                 filtered_rows = [r for r in parsed_all_rows if r["RawStatus"] == "SHIPPED"]
             elif chosen_segment == "📦 Delivered Orders (Completed)":
                 filtered_rows = [r for r in parsed_all_rows if r["RawStatus"] == "DELIVERED"]
-            elif chosen_segment == "❌ Cancelled & Refunded Orders":
+            elif chosen_segment == "❌ Cancelled Orders (Unfulfilled)":
                 filtered_rows = [r for r in parsed_all_rows if r["RawStatus"] == "CANCELLED"]
+            elif chosen_segment == "💸 Refunded Orders (Payment Refunded)":
+                filtered_rows = [r for r in parsed_all_rows if r["RawStatus"] == "REFUNDED"]
             else:
                 filtered_rows = parsed_all_rows
 
@@ -1096,7 +1104,13 @@ elif selected_page == "📈 Sales & Revenue Reports":
 
             # --- KPI DISPLAY ---
             k1, k2, k3, k4 = st.columns(4)
-            metric_rev_label = "Total Refunded Amount" if "Refunded" in chosen_segment else "Total Revenue"
+            if "Refunded" in chosen_segment:
+                metric_rev_label = "Total Refunded Amount"
+            elif "Cancelled" in chosen_segment:
+                metric_rev_label = "Cancelled Order Value"
+            else:
+                metric_rev_label = "Total Revenue"
+
             k1.metric(metric_rev_label, f"{currency_code} {segment_revenue:,.2f}")
             k2.metric("Total Orders", segment_orders_count)
             k3.metric("Avg Order Value (AOV)", f"{currency_code} {segment_aov:,.2f}")
