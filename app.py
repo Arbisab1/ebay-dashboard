@@ -1,5 +1,5 @@
 import base64
-from datetime import datetime
+from datetime import datetime, timezone
 import json
 import os
 import time
@@ -192,8 +192,8 @@ def get_template_index(tpl_dict, target_key):
     return 0
 
 
-# Accurate Order Status Classifier
-def get_clean_order_status(o):
+# Accurate Order Status Classifier with Robust Date & Fulfillment Parsing
+def get_clean_order_status(o, delivered_days_threshold=3):
     cancel_state = (
         o.get("cancelStatus", {}).get("cancelState", "").strip().upper()
     )
@@ -215,29 +215,40 @@ def get_clean_order_status(o):
     if not has_tracking and f_status in ["NOT_STARTED", "IN_PROGRESS"]:
         return "NEW", "🆕 New Order"
 
-    # Check Delivery vs Shipped/In-Transit
+    now_utc = datetime.now(timezone.utc)
     is_delivered = False
+
+    # Check 1: Explicit actual delivery date in fulfillment plans
     for plan in plans:
         ship_step = plan.get("shippingStep", {})
-        # Direct delivery date check
-        actual_del = ship_step.get("actualDeliveryDate")
-        if actual_del:
+        if ship_step.get("actualDeliveryDate"):
             is_delivered = True
             break
-
-        # Estimated delivery date comparison
         est_max = ship_step.get("estimatedDeliveryDateMax")
         if est_max:
             try:
-                # Parse ISO date string
-                clean_date = est_max.replace("Z", "+00:00")
-                est_dt = datetime.fromisoformat(clean_date)
-                if (
-                    datetime.now(est_dt.tzinfo) > est_dt
-                    and (f_status == "FULFILLED" or has_tracking)
-                ):
+                clean_str = est_max.replace("Z", "+00:00")
+                dt = datetime.fromisoformat(clean_str)
+                if dt.tzinfo is None:
+                    dt = dt.replace(tzinfo=timezone.utc)
+                if now_utc >= dt:
                     is_delivered = True
                     break
+            except Exception:
+                pass
+
+    # Check 2: Order age fallback for fulfilled orders
+    if not is_delivered and (f_status == "FULFILLED" or has_tracking):
+        order_date_str = o.get("creationDate") or o.get("lastModifiedDate")
+        if order_date_str:
+            try:
+                clean_str = order_date_str.replace("Z", "+00:00")
+                order_dt = datetime.fromisoformat(clean_str)
+                if order_dt.tzinfo is None:
+                    order_dt = order_dt.replace(tzinfo=timezone.utc)
+                days_diff = (now_utc - order_dt).days
+                if days_diff >= delivered_days_threshold:
+                    is_delivered = True
             except Exception:
                 pass
 
@@ -405,10 +416,23 @@ else:
                             key=f"tpl_select_{name}",
                         )
 
+                    # Delivery age threshold setting (Default 3 days)
+                    del_days = 3
+                    if "Delivered" in status_filter or "Shipped" in status_filter:
+                        del_days = st.slider(
+                            "Mark as delivered if order is older than (days):",
+                            min_value=1,
+                            max_value=14,
+                            value=3,
+                            key=f"slider_days_{name}",
+                        )
+
                     # Strict Separation Filter Logic
                     display_orders = []
                     for o in orders:
-                        order_type, _ = get_clean_order_status(o)
+                        order_type, _ = get_clean_order_status(
+                            o, delivered_days_threshold=del_days
+                        )
 
                         if status_filter == "📋 All Orders":
                             display_orders.append(o)
@@ -518,7 +542,9 @@ else:
                             else "N/A"
                         )
 
-                        _, clean_badge = get_clean_order_status(o)
+                        _, clean_badge = get_clean_order_status(
+                            o, delivered_days_threshold=del_days
+                        )
 
                         tracking_num = "Uploaded on eBay"
                         carrier_name = "Courier"
