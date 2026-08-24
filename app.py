@@ -344,62 +344,93 @@ if "logged_in" not in st.session_state:
 
 
 # ==========================================================
-# 1. BULLETPROOF DIRECT LOGIN SCREEN
+# 1. LOGIN & SELF SIGN-UP TABS
 # ==========================================================
 if not st.session_state.logged_in:
     c1, c2, c3 = st.columns([1, 1.5, 1])
     with c2:
         st.markdown(
             """
-        <div style="text-align: center; padding: 24px; background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 12px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05); margin-bottom: 20px;">
+        <div style="text-align: center; padding: 20px; background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 12px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05); margin-bottom: 16px;">
             <img src="https://upload.wikimedia.org/wikipedia/commons/1/1b/EBay_logo.svg" width="90" style="margin-bottom: 8px;">
             <h3 style="margin: 0; color: #0F172A; font-weight: 700;">eBay Automation Portal</h3>
-            <p style="margin-top: 4px; color: #64748B; font-size: 0.85rem;">Sign in to your dashboard</p>
+            <p style="margin-top: 4px; color: #64748B; font-size: 0.85rem;">Sign in or create an account for your store</p>
         </div>
         """,
             unsafe_allow_html=True,
         )
 
-        with st.form("direct_login_form"):
-            uname = st.text_input("Username").strip()
-            pword = st.text_input("Password", type="password").strip()
-            submit_btn = st.form_submit_button(
-                "Sign In", use_container_width=True, type="primary"
-            )
+        auth_tab1, auth_tab2 = st.tabs(["🔑 Sign In", "➕ Create an Account"])
 
-            if submit_btn:
-                saved_admin_pass = users_db.get("admin", {}).get("password")
-                
-                # Check 1: Custom set admin password or fallback to "admin" / "admin123"
-                if uname.lower() == "admin" and (
-                    (saved_admin_pass and saved_admin_pass == hash_pass(pword))
-                    or (not saved_admin_pass and (pword == "admin" or pword == "admin123"))
-                    or (pword == "admin")
-                ):
-                    st.session_state.logged_in = True
-                    st.session_state.username = "admin"
-                    st.session_state.role = "admin"
-                    st.session_state.assigned_stores = ["ALL"]
-                    st.success("Admin Login Successful!")
-                    st.rerun()
+        # TAB 1: SIGN IN
+        with auth_tab1:
+            with st.form("direct_login_form"):
+                uname = st.text_input("Username").strip()
+                pword = st.text_input("Password", type="password").strip()
+                submit_btn = st.form_submit_button(
+                    "Sign In", use_container_width=True, type="primary"
+                )
 
-                # Check 2: Client user check
-                elif (
-                    uname in users_db
-                    and users_db[uname]["password"] == hash_pass(pword)
-                ):
-                    st.session_state.logged_in = True
-                    st.session_state.username = uname
-                    st.session_state.role = users_db[uname].get(
-                        "role", "client"
-                    )
-                    st.session_state.assigned_stores = users_db[uname].get(
-                        "assigned_stores", []
-                    )
-                    st.success(f"Welcome, {uname}!")
-                    st.rerun()
-                else:
-                    st.error("Invalid Username or Password.")
+                if submit_btn:
+                    saved_admin_pass = users_db.get("admin", {}).get("password")
+                    if uname.lower() == "admin" and (
+                        (saved_admin_pass and saved_admin_pass == hash_pass(pword))
+                        or (not saved_admin_pass and (pword == "admin" or pword == "admin123"))
+                        or (pword == "admin")
+                    ):
+                        st.session_state.logged_in = True
+                        st.session_state.username = "admin"
+                        st.session_state.role = "admin"
+                        st.session_state.assigned_stores = ["ALL"]
+                        st.success("Admin Login Successful!")
+                        st.rerun()
+
+                    elif (
+                        uname in users_db
+                        and users_db[uname]["password"] == hash_pass(pword)
+                    ):
+                        st.session_state.logged_in = True
+                        st.session_state.username = uname
+                        st.session_state.role = users_db[uname].get("role", "client")
+                        st.session_state.assigned_stores = users_db[uname].get(
+                            "assigned_stores", []
+                        )
+                        st.success(f"Welcome, {uname}!")
+                        st.rerun()
+                    else:
+                        st.error("Invalid Username or Password.")
+
+        # TAB 2: SELF SIGN-UP
+        with auth_tab2:
+            with st.form("signup_form"):
+                new_u = st.text_input("Choose Username:").strip()
+                new_p = st.text_input("Choose Password:", type="password").strip()
+                store_label = st.text_input("Your eBay Store Name / Alias:").strip()
+                signup_btn = st.form_submit_button(
+                    "Create Account & Continue", use_container_width=True, type="primary"
+                )
+
+                if signup_btn:
+                    if new_u and new_p and store_label:
+                        if new_u in users_db or new_u.lower() == "admin":
+                            st.error("Username already exists. Choose another.")
+                        else:
+                            users_db[new_u] = {
+                                "password": hash_pass(new_p),
+                                "role": "client",
+                                "assigned_stores": [store_label],
+                            }
+                            save_json(USERS_FILE, users_db)
+                            
+                            st.session_state.logged_in = True
+                            st.session_state.username = new_u
+                            st.session_state.role = "client"
+                            st.session_state.assigned_stores = [store_label]
+                            st.success("Account created successfully! Redirecting...")
+                            time.sleep(1)
+                            st.rerun()
+                    else:
+                        st.warning("All fields are required.")
 
     st.stop()
 
@@ -423,7 +454,7 @@ with st.sidebar:
         """
     <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 12px;">
         <img src="https://upload.wikimedia.org/wikipedia/commons/1/1b/EBay_logo.svg" width="60">
-        <span style="font-weight: 700; font-size: 1.1rem; color: #0F172A;">Manager</span>
+        <span style="font-weight: 700; font-size: 1.1rem; color: #0F172A;">Workspace</span>
     </div>
     """,
         unsafe_allow_html=True,
@@ -442,7 +473,6 @@ with st.sidebar:
 
     st.divider()
 
-    # --- PASSWORD CHANGE BOX IN SIDEBAR ---
     with st.expander("🔑 Change Password"):
         c_p = st.text_input("Current Password:", type="password", key="side_cp")
         n_p = st.text_input("New Password:", type="password", key="side_np")
@@ -452,7 +482,6 @@ with st.sidebar:
             u_key = st.session_state.username
             saved_p = users_db.get(u_key, {}).get("password")
             
-            # Verify current password
             auth_ok = False
             if u_key == "admin":
                 if (saved_p and saved_p == hash_pass(c_p)) or (c_p == "admin" or c_p == "admin123"):
@@ -471,7 +500,7 @@ with st.sidebar:
                     time.sleep(1)
                     st.rerun()
                 else:
-                    st.error("New passwords do not match or empty.")
+                    st.error("New passwords do not match.")
             else:
                 st.error("Current password incorrect.")
 
@@ -481,12 +510,13 @@ with st.sidebar:
         nav_options = [
             "All Stores Orders & Messaging",
             "Link & Manage eBay Stores",
-            "Client Accounts & Links",
+            "Registered Clients Overview",
             "Global Message Templates",
         ]
     else:
         nav_options = [
             "My Orders & Auto-Messaging",
+            "➕ Connect My eBay Store",
             "My Message Templates",
         ]
 
@@ -508,14 +538,10 @@ if "Orders &" in selected_page:
     """,
         unsafe_allow_html=True,
     )
-    st.caption(
-        "Live eBay order stream, fulfillment status segmentation, and auto-dispatch."
-    )
 
     if not accessible_stores:
-        st.warning(
-            "No store accounts are currently assigned or linked to your profile."
-        )
+        st.info("👋 Welcome! Your store is not connected yet.")
+        st.write("Please go to **'➕ Connect My eBay Store'** in the sidebar to authorize your account.")
     else:
         active_store_name = st.selectbox(
             "Select Store Channel:", list(accessible_stores.keys())
@@ -555,9 +581,7 @@ if "Orders &" in selected_page:
                 "📋 All Orders",
             ]
             with col_filter:
-                status_filter = st.selectbox(
-                    "Target Filter Group:", filter_options
-                )
+                status_filter = st.selectbox("Target Filter Group:", filter_options)
 
             target_tpl_name = "Brand New Order Welcome"
             if "Shipped" in status_filter:
@@ -624,9 +648,7 @@ if "Orders &" in selected_page:
 
                     for inst in o.get("fulfillmentStartInstructions", []):
                         step = inst.get("shippingStep", {})
-                        track_info = step.get(
-                            "shipmentTracking", {}
-                        ).get("trackingNumber")
+                        track_info = step.get("shipmentTracking", {}).get("trackingNumber")
                         carrier_info = step.get("shippingCarrierCode")
                         if track_info:
                             tracking_num = track_info
@@ -649,18 +671,14 @@ if "Orders &" in selected_page:
                             logs[f"{order_id}_{chosen_template}"] = {
                                 "buyer": buyer,
                                 "status": "Sent",
-                                "time": datetime.now().strftime(
-                                    "%Y-%m-%d %H:%M:%S"
-                                ),
+                                "time": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
                             }
 
                     time.sleep(0.3)
                     progress_bar.progress((i + 1) / len(display_orders))
 
                 save_json(LOGS_FILE, logs)
-                st.success(
-                    f"✅ {sent_count}/{len(display_orders)} messages dispatched!"
-                )
+                st.success(f"✅ {sent_count}/{len(display_orders)} messages dispatched!")
 
             st.divider()
             st.markdown("### 📋 Order List & Direct Actions")
@@ -669,14 +687,8 @@ if "Orders &" in selected_page:
                 order_id = o.get("orderId", "")
                 buyer = o.get("buyer", {}).get("username", "Buyer")
                 line_items = o.get("lineItems", [])
-                item_title = (
-                    line_items[0].get("title", "Item") if line_items else ""
-                )
-                item_id = (
-                    line_items[0].get("legacyItemId", "N/A")
-                    if line_items
-                    else "N/A"
-                )
+                item_title = line_items[0].get("title", "Item") if line_items else ""
+                item_id = line_items[0].get("legacyItemId", "N/A") if line_items else "N/A"
 
                 _, clean_badge = get_clean_order_status(o)
 
@@ -685,9 +697,7 @@ if "Orders &" in selected_page:
 
                 for inst in o.get("fulfillmentStartInstructions", []):
                     step = inst.get("shippingStep", {})
-                    track_info = step.get(
-                        "shipmentTracking", {}
-                    ).get("trackingNumber")
+                    track_info = step.get("shipmentTracking", {}).get("trackingNumber")
                     carrier_info = step.get("shippingCarrierCode")
                     if track_info:
                         tracking_num = track_info
@@ -738,9 +748,7 @@ if "Orders &" in selected_page:
                                     logs[log_key] = {
                                         "buyer": buyer,
                                         "status": "Sent",
-                                        "time": datetime.now().strftime(
-                                            "%Y-%m-%d %H:%M:%S"
-                                        ),
+                                        "time": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
                                     }
                                     save_json(LOGS_FILE, logs)
                                     st.success(f"Sent to {buyer}!")
@@ -750,27 +758,25 @@ if "Orders &" in selected_page:
 
 
 # ==========================================================
-# PAGE B: LINK & MANAGE STORES (ADMIN ONLY)
+# PAGE B: LINK & MANAGE STORES (ADMIN OR CLIENT SELF-CONNECT)
 # ==========================================================
-elif (
-    selected_page == "Link & Manage eBay Stores"
-    and st.session_state.role == "admin"
-):
-    st.markdown("## ➕ Store Management Console")
-    st.caption(
-        "Authorize production eBay accounts via OAuth or manage existing connections."
-    )
+elif "Connect My eBay Store" in selected_page or "Link & Manage eBay Stores" in selected_page:
+    st.markdown("## ➕ Connect & Authorize eBay Store")
+    st.caption("Securely authenticate your production eBay account via official OAuth.")
 
     c_link, c_manage = st.columns([1.2, 1])
 
     with c_link:
-        st.markdown("### 🔗 Authorize New Store")
-        st.info("Step 1: Click the authorization link to sign in via eBay:")
+        st.markdown("### 🔗 Authorize Account")
+        st.info("Step 1: Click the link below and authorize on eBay:")
         st.markdown(f"👉 [**Authorize with eBay (Click Here)**]({AUTH_URL})")
         st.write("")
 
         redirect_input = st.text_input("Redirected URL / Code:")
-        store_alias = st.text_input("Store Label (e.g. Store 1 UK):")
+        
+        # Pre-fill store name for client or allow admin to type
+        assigned_s = st.session_state.assigned_stores[0] if st.session_state.assigned_stores and st.session_state.assigned_stores[0] != "ALL" else ""
+        store_alias = st.text_input("Store Name / Label:", value=assigned_s)
 
         if st.button("Complete Authorization", type="primary"):
             if redirect_input and store_alias:
@@ -783,7 +789,16 @@ elif (
                         "refresh_token": token_data.get("refresh_token", ""),
                     }
                     save_json(STORES_FILE, stores)
+                    
+                    # Update client assigned store if needed
+                    u_curr = st.session_state.username
+                    if u_curr in users_db:
+                        users_db[u_curr]["assigned_stores"] = [store_alias]
+                        save_json(USERS_FILE, users_db)
+                        st.session_state.assigned_stores = [store_alias]
+
                     st.success(f"Store '{store_alias}' linked successfully!")
+                    time.sleep(1)
                     st.rerun()
                 else:
                     st.error("Authentication failed. Please verify code/URL.")
@@ -791,11 +806,11 @@ elif (
                 st.warning("All fields are required.")
 
     with c_manage:
-        st.markdown("### 🏬 Connected Stores")
-        if not stores:
+        st.markdown("### 🏬 Connected Store Status")
+        if not accessible_stores:
             st.info("No stores linked yet.")
         else:
-            for s_name in list(stores.keys()):
+            for s_name in list(accessible_stores.keys()):
                 with st.container():
                     st.markdown(
                         f"""
@@ -806,11 +821,7 @@ elif (
                     """,
                         unsafe_allow_html=True,
                     )
-                    if st.button(
-                        f"🗑️ Delete {s_name}",
-                        key=f"del_store_page_{s_name}",
-                        type="secondary",
-                    ):
+                    if st.button(f"🗑️ Disconnect {s_name}", key=f"del_store_{s_name}", type="secondary"):
                         del stores[s_name]
                         save_json(STORES_FILE, stores)
                         st.success(f"Store '{s_name}' removed!")
@@ -818,104 +829,43 @@ elif (
 
 
 # ==========================================================
-# PAGE C: CLIENT ACCOUNTS & ADMIN PASSWORD (ADMIN ONLY)
+# PAGE C: REGISTERED CLIENTS OVERVIEW (ADMIN ONLY)
 # ==========================================================
-elif (
-    selected_page == "Client Accounts & Links"
-    and st.session_state.role == "admin"
-):
-    st.markdown("## 👥 Client Accounts & Security Control")
-    st.caption("Create dedicated client accounts and update Admin credentials.")
+elif selected_page == "Registered Clients Overview" and st.session_state.role == "admin":
+    st.markdown("## 👥 Self-Registered Clients & Stores")
+    st.caption("Monitor all registered clients, their store names, and connected status.")
 
-    c_u1, c_u2 = st.columns([1.2, 1])
-
-    with c_u1:
-        st.markdown("### ➕ Create New Client Login")
-        new_uname = st.text_input("Client Username:")
-        new_pword = st.text_input("Client Password:", type="password")
-        store_choices = list(stores.keys())
-        assigned_store = st.selectbox(
-            "Assign Store Access:",
-            store_choices if store_choices else ["No stores connected"],
-        )
-
-        if st.button("Create Client Account", type="primary"):
-            if (
-                new_uname
-                and new_pword
-                and assigned_store != "No stores connected"
-            ):
-                if new_uname in users_db:
-                    st.error("Username already exists!")
-                else:
-                    users_db[new_uname] = {
-                        "password": hash_pass(new_pword),
-                        "role": "client",
-                        "assigned_stores": [assigned_store],
-                    }
-                    save_json(USERS_FILE, users_db)
-                    st.success(
-                        f"Account for '{new_uname}' created successfully!"
-                    )
-                    st.rerun()
-            else:
-                st.warning("All fields are required.")
-
-        st.divider()
-        st.markdown("### 🔒 Master Admin Password Reset")
-        with st.form("admin_pass_reset_form"):
-            admin_curr_p = st.text_input(
-                "Current Admin Password:", type="password"
-            )
-            admin_new_p = st.text_input("New Admin Password:", type="password")
-            admin_conf_p = st.text_input(
-                "Confirm New Admin Password:", type="password"
-            )
-            admin_pass_btn = st.form_submit_button(
-                "Save New Admin Password", type="primary"
-            )
-
-            if admin_pass_btn:
-                saved_admin_p = users_db.get("admin", {}).get("password")
-                auth_valid = False
-                if (saved_admin_p and saved_admin_p == hash_pass(admin_curr_p)) or (admin_curr_p == "admin" or admin_curr_p == "admin123"):
-                    auth_valid = True
-
-                if auth_valid:
-                    if admin_new_p == admin_conf_p and len(admin_new_p) > 0:
-                        if "admin" not in users_db:
-                            users_db["admin"] = {"role": "admin", "assigned_stores": ["ALL"]}
-                        users_db["admin"]["password"] = hash_pass(admin_new_p)
-                        save_json(USERS_FILE, users_db)
-                        st.success("Admin password updated successfully!")
-                    else:
-                        st.error("New passwords do not match or empty.")
-                else:
-                    st.error("Current admin password is incorrect.")
-
-    with c_u2:
-        st.markdown("### 📋 Client Logins")
-        for u, data in users_db.items():
-            if u != "admin":
-                with st.container():
-                    st.markdown(
-                        f"""
-                    <div style="padding: 10px 14px; background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 8px; margin-bottom: 8px;">
-                        <strong>👤 {u}</strong><br>
-                        <small style="color: #64748B;">Assigned Store: {data.get('assigned_stores')}</small>
+    client_users = {k: v for k, v in users_db.items() if k != "admin"}
+    
+    if not client_users:
+        st.info("No clients have signed up yet.")
+    else:
+        for u, data in client_users.items():
+            assigned = data.get("assigned_stores", ["N/A"])[0]
+            is_connected = assigned in stores
+            
+            with st.container():
+                st.markdown(
+                    f"""
+                <div style="padding: 14px 18px; background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 8px; margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center;">
+                    <div>
+                        <strong style="font-size: 1.05rem;">👤 Client: {u}</strong><br>
+                        <span style="color: #64748B; font-size: 0.85rem;">Store Name: <b>{assigned}</b></span>
                     </div>
-                    """,
-                        unsafe_allow_html=True,
-                    )
-                    if st.button(
-                        f"🗑️ Delete Client {u}",
-                        key=f"del_user_{u}",
-                        type="secondary",
-                    ):
-                        del users_db[u]
-                        save_json(USERS_FILE, users_db)
-                        st.success(f"Client '{u}' removed!")
-                        st.rerun()
+                    <div>
+                        <span style="color: {'#16A34A' if is_connected else '#DC2626'}; font-weight: 600; font-size: 0.9rem;">
+                            {'● eBay Linked' if is_connected else '○ Pending Connection'}
+                        </span>
+                    </div>
+                </div>
+                """,
+                    unsafe_allow_html=True,
+                )
+                if st.button(f"🗑️ Delete Client {u}", key=f"del_client_{u}", type="secondary"):
+                    del users_db[u]
+                    save_json(USERS_FILE, users_db)
+                    st.success(f"Client '{u}' removed!")
+                    st.rerun()
 
 
 # ==========================================================
@@ -923,9 +873,7 @@ elif (
 # ==========================================================
 elif "Message Templates" in selected_page:
     st.markdown("## 📝 Message Templates Settings")
-    st.caption(
-        "Manage personalized messaging templates using dynamic attributes."
-    )
+    st.caption("Manage personalized messaging templates using dynamic attributes.")
 
     st.markdown(
         """
@@ -938,9 +886,7 @@ elif "Message Templates" in selected_page:
     )
     st.divider()
 
-    selected_tpl_edit = st.selectbox(
-        "Select Template to Edit:", list(templates.keys())
-    )
+    selected_tpl_edit = st.selectbox("Select Template to Edit:", list(templates.keys()))
     tpl_body = st.text_area(
         "Template Content:",
         value=templates[selected_tpl_edit],
