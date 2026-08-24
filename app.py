@@ -9,7 +9,7 @@ import requests
 import streamlit as st
 
 # --- CONFIGURATION ---
-WHATSAPP_NUMBER = "923001234567"  # Apna WhatsApp number yahan enter karein (Country code ke sath, without +)
+WHATSAPP_NUMBER = "923011234527"  # Updated WhatsApp Number
 WHATSAPP_DEFAULT_MSG = "Hello Nawaz, I need help with the eBay Automation Dashboard."
 WHATSAPP_LINK = f"https://wa.me/{WHATSAPP_NUMBER}?text={requests.utils.quote(WHATSAPP_DEFAULT_MSG)}"
 
@@ -567,7 +567,7 @@ with st.sidebar:
             <img src="https://upload.wikimedia.org/wikipedia/commons/6/6b/WhatsApp.svg" width="20" height="20">
             <strong style="color: #166534; font-size: 0.9rem;">Direct Support</strong>
         </div>
-        <p style="font-size: 0.8rem; color: #15803D; margin-bottom: 8px;">Got questions or need custom integrations?</p>
+        <p style="font-size: 0.8rem; color: #15803D; margin-bottom: 8px;">Got questions or need help setting up?</p>
         <a href="{WHATSAPP_LINK}" target="_blank" style="text-decoration: none;">
             <div style="background: #22C55E; color: white; text-align: center; padding: 6px; border-radius: 6px; font-weight: 600; font-size: 0.85rem;">
                 Chat on WhatsApp
