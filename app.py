@@ -1,10 +1,12 @@
 import base64
 from datetime import datetime, timedelta, timezone
 import hashlib
+import io
 import json
 import os
 import time
 from urllib.parse import parse_qs, unquote, urlparse
+import pandas as pd
 import requests
 import streamlit as st
 
@@ -433,7 +435,7 @@ if "auth_mode" not in st.session_state:
 
 
 # ==========================================================
-# 1. LOGIN & SIGN UP (INSTANT SWITCH BUTTONS BELOW)
+# 1. LOGIN & SIGN UP
 # ==========================================================
 if not st.session_state.logged_in:
     c1, c2, c3 = st.columns([1, 1.4, 1])
@@ -449,7 +451,6 @@ if not st.session_state.logged_in:
             unsafe_allow_html=True,
         )
 
-        # Dynamic Form rendering
         if st.session_state.auth_mode == "signin":
             with st.form("signin_form"):
                 uname = st.text_input("Username").strip()
@@ -486,7 +487,6 @@ if not st.session_state.logged_in:
                         st.error("Invalid Username or Password.")
 
         else:
-            # SIGN UP FORM
             with st.form("signup_form"):
                 new_uname = st.text_input("Username").strip()
                 new_pword = st.text_input("Password", type="password").strip()
@@ -517,7 +517,6 @@ if not st.session_state.logged_in:
                     else:
                         st.warning("Please fill in all fields (Username, Password & Store Name).")
 
-        # --- BOTTOM SWITCH BUTTONS (INSTANT ACTION) ---
         st.write("")
         col_sw1, col_sw2 = st.columns(2)
         with col_sw1:
@@ -606,6 +605,7 @@ with st.sidebar:
     if st.session_state.role == "admin":
         nav_options = [
             "All Stores Orders & Messaging",
+            "📈 Sales & Revenue Reports",
             "Link & Manage eBay Stores",
             "Registered Clients Overview",
             "Global Message Templates",
@@ -613,6 +613,7 @@ with st.sidebar:
     else:
         nav_options = [
             "My Orders & Auto-Messaging",
+            "📈 Sales & Revenue Reports",
             "➕ Connect My eBay Store",
             "My Message Templates",
         ]
@@ -950,7 +951,163 @@ if "Orders &" in selected_page:
 
 
 # ==========================================================
-# PAGE B: LINK & MANAGE STORES (ADMIN OR CLIENT SELF-CONNECT)
+# PAGE B: SALES & REVENUE REPORTS
+# ==========================================================
+elif selected_page == "📈 Sales & Revenue Reports":
+    st.markdown(
+        """
+    <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 8px;">
+        <img src="https://upload.wikimedia.org/wikipedia/commons/1/1b/EBay_logo.svg" width="75">
+        <h2 style="margin: 0; color: #0F172A; font-weight: 700;">Sales & Revenue Analytics</h2>
+    </div>
+    """,
+        unsafe_allow_html=True,
+    )
+    st.caption("Financial performance, order breakdown, and downloadable CSV/Excel reports.")
+
+    if not accessible_stores:
+        st.info("👋 Welcome! Your store is not connected yet.")
+    else:
+        active_sales_store = st.selectbox(
+            "Select Store Channel for Reports:", list(accessible_stores.keys()), key="sales_rep_store_sel"
+        )
+        tokens = accessible_stores[active_sales_store]
+
+        st.divider()
+        st.markdown("#### 📅 Report Date Range")
+        
+        fetch_all_sales_toggle = st.checkbox("📋 Fetch All-Time Sales (No Date Limit)", value=False, key="all_sales_toggle")
+        
+        c_sd1, c_sd2, c_sbtn = st.columns([2, 2, 1.5])
+        with c_sd1:
+            default_start = (datetime.now() - timedelta(days=30)).date()
+            sales_start_date = st.date_input("From Date:", value=default_start, disabled=fetch_all_sales_toggle, key="sales_start_date")
+        with c_sd2:
+            default_end = datetime.now().date()
+            sales_end_date = st.date_input("To Date:", value=default_end, disabled=fetch_all_sales_toggle, key="sales_end_date")
+
+        sales_date_filter_key = "NONE"
+        if not fetch_all_sales_toggle:
+            if sales_start_date > sales_end_date:
+                st.error("'From Date' cannot be after 'To Date'.")
+            else:
+                sales_date_filter_key = f"{sales_start_date}T00:00:00.000Z..{sales_end_date}T23:59:59.999Z"
+
+        with c_sbtn:
+            st.write("")
+            refresh_sales_btn = st.button("🔄 Sync Sales Data", type="primary", use_container_width=True, key="sync_sales_btn")
+
+        sales_hash = hash((active_sales_store, sales_date_filter_key, "sales"))
+        last_sales_hash = st.session_state.get(f"last_sales_hash_{active_sales_store}")
+
+        if refresh_sales_btn or sales_hash != last_sales_hash:
+            if not (not fetch_all_sales_toggle and sales_start_date > sales_end_date):
+                with st.spinner("Calculating sales and financial data..."):
+                    access_token = tokens["access_token"]
+                    test_headers = {"Authorization": f"Bearer {access_token}"}
+                    test_res = requests.get("https://api.ebay.com/sell/fulfillment/v1/order?limit=1", headers=test_headers)
+                    if test_res.status_code != 200 and tokens.get("refresh_token"):
+                        new_t = get_fresh_token(tokens["refresh_token"])
+                        if new_t:
+                            stores[active_sales_store]["access_token"] = new_t
+                            save_json(STORES_FILE, stores)
+                            access_token = new_t
+
+                    if refresh_sales_btn:
+                        st.cache_data.clear()
+
+                    try:
+                        raw_orders = fetch_all_ebay_orders_cached(access_token, sales_date_filter_key)
+                        st.session_state[f"sales_orders_{active_sales_store}"] = raw_orders
+                        st.session_state[f"last_sales_hash_{active_sales_store}"] = sales_hash
+                    except Exception as e:
+                        st.error(f"Failed to load sales: {str(e)}")
+
+        sales_orders = st.session_state.get(f"sales_orders_{active_sales_store}", [])
+
+        if sales_orders:
+            # Parse sales into structured table
+            parsed_rows = []
+            total_revenue = 0.0
+            currency_code = "USD"
+            total_items_count = 0
+
+            for o in sales_orders:
+                order_id = o.get("orderId", "N/A")
+                created_date = o.get("creationDate", "")[:10]
+                buyer = o.get("buyer", {}).get("username", "Buyer")
+                
+                # Pricing
+                pricing = o.get("pricingSummary", {})
+                total_obj = pricing.get("total", {})
+                order_total = float(total_obj.get("value", 0.0))
+                currency_code = total_obj.get("currency", currency_code)
+                
+                status_raw, status_badge = get_clean_order_status(o)
+                
+                # Only sum revenue for non-cancelled orders
+                if status_raw != "CANCELLED":
+                    total_revenue += order_total
+
+                line_items = o.get("lineItems", [])
+                items_titles = []
+                for li in line_items:
+                    qty = int(li.get("quantity", 1))
+                    total_items_count += qty
+                    items_titles.append(f"{li.get('title', 'Item')} (x{qty})")
+
+                parsed_rows.append({
+                    "Order ID": order_id,
+                    "Date": created_date,
+                    "Buyer": buyer,
+                    "Items": ", ".join(items_titles),
+                    "Amount": order_total,
+                    "Currency": currency_code,
+                    "Status": status_badge,
+                })
+
+            df_sales = pd.DataFrame(parsed_rows)
+            valid_orders_count = len([r for r in parsed_rows if "Cancelled" not in r["Status"]])
+            aov = (total_revenue / valid_orders_count) if valid_orders_count > 0 else 0.0
+
+            st.divider()
+            
+            # --- KPI METRICS ---
+            k1, k2, k3, k4 = st.columns(4)
+            k1.metric("Gross Sales Revenue", f"{currency_code} {total_revenue:,.2f}")
+            k2.metric("Completed Orders", valid_orders_count)
+            k3.metric("Avg Order Value (AOV)", f"{currency_code} {aov:,.2f}")
+            k4.metric("Total Items Sold", total_items_count)
+
+            st.divider()
+
+            # --- CSV DOWNLOAD & DATA TABLE ---
+            c_head, c_dl = st.columns([3, 1])
+            with c_head:
+                st.markdown("### 📋 Detailed Sales Breakdown")
+            with c_dl:
+                csv_buffer = io.StringIO()
+                df_sales.to_csv(csv_buffer, index=False)
+                st.download_button(
+                    label="📥 Export Report (CSV)",
+                    data=csv_buffer.getvalue(),
+                    file_name=f"eBay_Sales_Report_{active_sales_store}_{datetime.now().strftime('%Y%m%d')}.csv",
+                    mime="text/csv",
+                    use_container_width=True,
+                    type="primary"
+                )
+
+            st.dataframe(
+                df_sales,
+                use_container_width=True,
+                hide_index=True,
+            )
+        else:
+            st.info("No sales records found for this period. Click '🔄 Sync Sales Data' to fetch.")
+
+
+# ==========================================================
+# PAGE C: LINK & MANAGE STORES (ADMIN OR CLIENT SELF-CONNECT)
 # ==========================================================
 elif (
     "Connect My eBay Store" in selected_page
@@ -1037,7 +1194,7 @@ elif (
 
 
 # ==========================================================
-# PAGE C: REGISTERED CLIENTS OVERVIEW (ADMIN ONLY)
+# PAGE D: REGISTERED CLIENTS OVERVIEW (ADMIN ONLY)
 # ==========================================================
 elif (
     selected_page == "Registered Clients Overview"
@@ -1087,7 +1244,7 @@ elif (
 
 
 # ==========================================================
-# PAGE D: MESSAGE TEMPLATES (CLIENT & ADMIN)
+# PAGE E: MESSAGE TEMPLATES (CLIENT & ADMIN)
 # ==========================================================
 elif "Message Templates" in selected_page:
     st.markdown("## 📝 Message Templates Settings")
