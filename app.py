@@ -433,7 +433,7 @@ if "auth_mode" not in st.session_state:
 
 
 # ==========================================================
-# 1. LOGIN & SIGN UP FORM (BUTTONS AT THE BOTTOM)
+# 1. LOGIN & SIGN UP (INSTANT SWITCH BUTTONS BELOW)
 # ==========================================================
 if not st.session_state.logged_in:
     c1, c2, c3 = st.columns([1, 1.4, 1])
@@ -449,36 +449,16 @@ if not st.session_state.logged_in:
             unsafe_allow_html=True,
         )
 
-        # Single Form Card
-        with st.form("auth_main_form"):
-            uname = st.text_input("Username").strip()
-            pword = st.text_input("Password", type="password").strip()
-            
-            store_label = ""
-            if st.session_state.auth_mode == "signup":
-                store_label = st.text_input("Your eBay Store Name / Alias:").strip()
+        # Dynamic Form rendering
+        if st.session_state.auth_mode == "signin":
+            with st.form("signin_form"):
+                uname = st.text_input("Username").strip()
+                pword = st.text_input("Password", type="password").strip()
+                
+                st.write("")
+                submit_btn = st.form_submit_button("Sign In", use_container_width=True, type="primary")
 
-            st.write("")
-            
-            # Switcher between Sign In and Sign Up placed below inputs
-            mode_choice = st.radio(
-                "Action Mode:",
-                ["🔑 Sign In", "➕ Sign Up"],
-                index=0 if st.session_state.auth_mode == "signin" else 1,
-                horizontal=True,
-                label_visibility="collapsed"
-            )
-
-            st.write("")
-
-            # Main Action Button
-            action_btn_label = "Sign In" if "Sign In" in mode_choice else "Sign Up"
-            submit_btn = st.form_submit_button(
-                action_btn_label, use_container_width=True, type="primary"
-            )
-
-            if submit_btn:
-                if "Sign In" in mode_choice:
+                if submit_btn:
                     saved_admin_pass = users_db.get("admin", {}).get("password")
                     if uname.lower() == "admin" and (
                         (saved_admin_pass and saved_admin_pass == hash_pass(pword))
@@ -499,36 +479,55 @@ if not st.session_state.logged_in:
                         st.session_state.logged_in = True
                         st.session_state.username = uname
                         st.session_state.role = users_db[uname].get("role", "client")
-                        st.session_state.assigned_stores = users_db[uname].get(
-                            "assigned_stores", []
-                        )
+                        st.session_state.assigned_stores = users_db[uname].get("assigned_stores", [])
                         st.success(f"Welcome, {uname}!")
                         st.rerun()
                     else:
                         st.error("Invalid Username or Password.")
 
-                else:
-                    # SIGN UP LOGIC
-                    if uname and pword and store_label:
-                        if uname in users_db or uname.lower() == "admin":
+        else:
+            # SIGN UP FORM
+            with st.form("signup_form"):
+                new_uname = st.text_input("Username").strip()
+                new_pword = st.text_input("Password", type="password").strip()
+                store_label = st.text_input("Your eBay Store Name / Alias:").strip()
+                
+                st.write("")
+                signup_btn = st.form_submit_button("Sign Up", use_container_width=True, type="primary")
+
+                if signup_btn:
+                    if new_uname and new_pword and store_label:
+                        if new_uname in users_db or new_uname.lower() == "admin":
                             st.error("Username already exists. Choose another.")
                         else:
-                            users_db[uname] = {
-                                "password": hash_pass(pword),
+                            users_db[new_uname] = {
+                                "password": hash_pass(new_pword),
                                 "role": "client",
                                 "assigned_stores": [store_label],
                             }
                             save_json(USERS_FILE, users_db)
                             
                             st.session_state.logged_in = True
-                            st.session_state.username = uname
+                            st.session_state.username = new_uname
                             st.session_state.role = "client"
                             st.session_state.assigned_stores = [store_label]
                             st.success("Account created successfully! Redirecting...")
                             time.sleep(1)
                             st.rerun()
                     else:
-                        st.warning("Please fill all fields to Sign Up (Username, Password & Store Name).")
+                        st.warning("Please fill in all fields (Username, Password & Store Name).")
+
+        # --- BOTTOM SWITCH BUTTONS (INSTANT ACTION) ---
+        st.write("")
+        col_sw1, col_sw2 = st.columns(2)
+        with col_sw1:
+            if st.button("🔑 Sign In", use_container_width=True, type="secondary" if st.session_state.auth_mode == "signin" else "primary"):
+                st.session_state.auth_mode = "signin"
+                st.rerun()
+        with col_sw2:
+            if st.button("➕ Sign Up", use_container_width=True, type="secondary" if st.session_state.auth_mode == "signup" else "primary"):
+                st.session_state.auth_mode = "signup"
+                st.rerun()
 
     st.stop()
 
