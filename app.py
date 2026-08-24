@@ -34,96 +34,104 @@ AUTH_URL = (
 )
 
 st.set_page_config(
-    page_title="eBay Automation Cloud Portal",
+    page_title="OrderPing — eBay Automation",
     layout="wide",
-    page_icon="💼",
-    initial_sidebar_state="expanded",
+    page_icon="📦",
+    initial_sidebar_state="collapsed",
 )
 
-# --- CLEAN MODERN CORPORATE SAAS THEME (LIGHT MODE) ---
+# --- ORDERPING MINIMALIST SAAS CSS ---
 st.markdown(
     """
 <style>
-    /* Main Background & Text */
+    /* OrderPing Custom Theme */
     .stApp {
-        background-color: #F8FAFC !important;
-        color: #0F172A !important;
-        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif !important;
+        background-color: #F8F8FA !important;
+        color: #2D3748 !important;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif !important;
     }
-
-    /* Top Spacing */
+    
     .block-container {
-        padding-top: 2rem !important;
-        padding-bottom: 2.5rem !important;
+        padding-top: 1.5rem !important;
+        padding-bottom: 3rem !important;
+        max-width: 1100px !important;
     }
 
-    /* Metric Cards */
+    /* Hero Typography */
+    .hero-badge {
+        font-size: 0.75rem;
+        letter-spacing: 2px;
+        color: #718096;
+        text-transform: uppercase;
+        font-weight: 700;
+        text-align: center;
+        margin-bottom: 12px;
+    }
+
+    .hero-title {
+        font-size: 3.2rem;
+        font-weight: 800;
+        color: #1A202C;
+        text-align: center;
+        line-height: 1.15;
+        margin-bottom: 16px;
+        letter-spacing: -0.5px;
+    }
+
+    .hero-subtitle {
+        font-size: 1.05rem;
+        color: #718096;
+        text-align: center;
+        max-width: 650px;
+        margin: 0 auto 30px auto;
+        line-height: 1.5;
+    }
+
+    .journey-title {
+        text-align: center;
+        font-size: 1.35rem;
+        font-weight: 700;
+        color: #2D3748;
+        margin-top: 50px;
+        margin-bottom: 25px;
+    }
+
+    /* Buttons */
+    button[kind="primary"] {
+        background-color: #3B444F !important;
+        color: #FFFFFF !important;
+        font-weight: 600 !important;
+        border-radius: 8px !important;
+        padding: 0.55rem 1.4rem !important;
+        border: none !important;
+    }
+
+    button[kind="secondary"] {
+        background-color: transparent !important;
+        color: #3B444F !important;
+        border: 1px solid #CBD5E0 !important;
+        border-radius: 8px !important;
+        font-weight: 600 !important;
+    }
+
+    /* Cards */
+    .step-card {
+        background: #FFFFFF;
+        border: 1px solid #E2E8F0;
+        border-radius: 12px;
+        padding: 18px 20px;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.02);
+    }
+    
     div[data-testid="stMetric"] {
         background-color: #FFFFFF !important;
         border: 1px solid #E2E8F0 !important;
         border-radius: 10px !important;
-        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05) !important;
-        padding: 16px 20px !important;
     }
-
+    
     div[data-testid="stMetricValue"] {
-        font-size: 1.85rem !important;
+        color: #3B444F !important;
         font-weight: 700 !important;
-        color: #2563EB !important; /* Professional Royal Blue */
-    }
-
-    /* Primary Corporate Buttons */
-    button[kind="primary"] {
-        background-color: #2563EB !important;
-        color: #FFFFFF !important;
-        font-weight: 600 !important;
-        border: none !important;
-        border-radius: 8px !important;
-        box-shadow: 0 1px 2px rgba(37, 99, 235, 0.2) !important;
-        transition: all 0.2s ease !important;
-    }
-
-    button[kind="primary"]:hover {
-        background-color: #1D4ED8 !important;
-        box-shadow: 0 4px 6px -1px rgba(37, 99, 235, 0.3) !important;
-    }
-
-    /* Secondary Buttons */
-    button[kind="secondary"] {
-        background-color: #FFFFFF !important;
-        border: 1px solid #CBD5E1 !important;
-        color: #334155 !important;
-        border-radius: 8px !important;
-        font-weight: 500 !important;
-    }
-
-    button[kind="secondary"]:hover {
-        background-color: #F1F5F9 !important;
-        border-color: #94A3B8 !important;
-    }
-
-    /* Expander Container */
-    .streamlit-expanderHeader {
-        background-color: #FFFFFF !important;
-        border: 1px solid #E2E8F0 !important;
-        border-radius: 8px !important;
-        color: #1E293B !important;
-        font-weight: 600 !important;
-        box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03) !important;
-    }
-
-    /* Inputs, Selectboxes, Textareas */
-    div[data-baseweb="select"], div[data-baseweb="input"], textarea {
-        background-color: #FFFFFF !important;
-        border-color: #CBD5E1 !important;
-        color: #0F172A !important;
-        border-radius: 8px !important;
-    }
-
-    /* Sidebar Clean Styling */
-    section[data-testid="stSidebar"] {
-        background-color: #FFFFFF !important;
-        border-right: 1px solid #E2E8F0 !important;
     }
 </style>
 """,
@@ -133,26 +141,26 @@ st.markdown(
 DEFAULT_TEMPLATES = {
     "Brand New Order Welcome": (
         "Hi {buyer},\n\n"
-        "Thank you so much for your order #{order_id}! "
-        "We have received your payment and our team is preparing your item for dispatch.\n\n"
-        "Best regards,\nCustomer Care Team"
+        "Thank you for your order #{order_id}! "
+        "We are preparing your package for dispatch.\n\n"
+        "Best regards,\nCustomer Care"
     ),
     "Shipped Notification": (
         "Hi {buyer},\n\n"
-        "Great news! Your Order #{order_id} has been dispatched via {carrier}.\n"
+        "Your Order #{order_id} has been dispatched via {carrier}.\n"
         "Tracking Number: {tracking_number}\n\n"
-        "Thank you for shopping with us!"
+        "Thank you for your purchase!"
     ),
     "Delivered Feedback": (
         "Hi {buyer},\n\n"
         "Your Order #{order_id} has been delivered! "
-        "We hope you love your item. If you have a moment, please consider leaving us a 5-star positive review on eBay.\n\n"
+        "We hope you enjoy your item. Please consider leaving us a 5-star review on eBay.\n\n"
         "Best regards!"
     ),
     "Order Cancellation Notice": (
         "Hi {buyer},\n\n"
-        "This message is regarding your cancellation for Order #{order_id}. "
-        "The cancellation has been acknowledged and processed accordingly.\n\n"
+        "This is regarding your cancellation for Order #{order_id}. "
+        "Your cancellation has been processed.\n\n"
         "Thank you!"
     ),
 }
@@ -192,7 +200,6 @@ DEFAULT_USERS = {
 }
 
 
-# --- AUTH & API HELPERS ---
 def clean_auth_code(input_str):
     raw = input_str.strip()
     if "code=" in raw:
@@ -377,57 +384,164 @@ if "logged_in" not in st.session_state:
     st.session_state.username = None
     st.session_state.role = None
     st.session_state.assigned_stores = []
+if "show_login" not in st.session_state:
+    st.session_state.show_login = False
 
 
 # ==========================================================
-# 1. CLEAN MODERN LOGIN SCREEN
+# ORDERPING TOP NAVBAR
+# ==========================================================
+c_nav1, c_nav2 = st.columns([3, 1])
+with c_nav1:
+    st.markdown(
+        """
+    <div style="display: flex; align-items: center; gap: 8px;">
+        <span style="font-size: 1.5rem;">📦</span>
+        <span style="font-size: 1.3rem; font-weight: 800; color: #1A202C; letter-spacing: -0.5px;">OrderPing</span>
+    </div>
+    """,
+        unsafe_allow_html=True,
+    )
+with c_nav2:
+    if not st.session_state.logged_in:
+        if st.button("Get started", type="primary", use_container_width=True):
+            st.session_state.show_login = True
+    else:
+        if st.button("Logout", type="secondary", use_container_width=True):
+            st.session_state.logged_in = False
+            st.session_state.username = None
+            st.session_state.role = None
+            st.rerun()
+
+st.write("")
+
+# ==========================================================
+# 1. LANDING & LOGIN VIEW
 # ==========================================================
 if not st.session_state.logged_in:
-    c1, c2, c3 = st.columns([1, 1.5, 1])
-    with c2:
+    if not st.session_state.show_login:
+        # Hero Section exactly like the image
         st.markdown(
             """
-        <div style="text-align: center; padding: 24px 20px; background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 12px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05); margin-bottom: 20px;">
-            <div style="font-size: 2rem; margin-bottom: 4px;">💼</div>
-            <h2 style="margin: 0; color: #0F172A; font-weight: 700;">eBay Cloud Hub</h2>
-            <p style="margin-top: 4px; color: #64748B; font-size: 0.9rem;">Enterprise Multi-Account Automation Platform</p>
+        <div style="margin-top: 30px;">
+            <div class="hero-badge">EBAY AUTOMATION</div>
+            <div class="hero-title">Every eBay buyer hears<br>from you — automatically.</div>
+            <div class="hero-subtitle">
+                Thank-you notes on order, tracking on dispatch, a delivery check-in and a feedback reminder. Written by you, sent by OrderPing.
+            </div>
         </div>
         """,
             unsafe_allow_html=True,
         )
 
-        with st.form("login_form"):
-            uname = st.text_input("Username")
-            pword = st.text_input("Password", type="password")
-            st.write("")
-            submit_btn = st.form_submit_button(
-                "Sign In",
-                use_container_width=True,
-                type="primary",
+        c_b1, c_b2, c_b3 = st.columns([1, 1.2, 1])
+        with c_b2:
+            c_btn1, c_btn2 = st.columns(2)
+            with c_btn1:
+                st.markdown(
+                    f"""
+                <a href="{AUTH_URL}" target="_blank" style="text-decoration: none;">
+                    <div style="background-color: #3B444F; color: white; padding: 10px 16px; border-radius: 8px; text-align: center; font-weight: 600; font-size: 0.95rem;">
+                        Connect my eBay store
+                    </div>
+                </a>
+                """,
+                    unsafe_allow_html=True,
+                )
+            with c_btn2:
+                if st.button("Open dashboard", use_container_width=True):
+                    st.session_state.show_login = True
+                    st.rerun()
+
+        # Step cards
+        st.markdown(
+            "<div class='journey-title'>The whole order journey, covered</div>",
+            unsafe_allow_html=True,
+        )
+
+        s1, s2, s3, s4 = st.columns(4)
+        with s1:
+            st.markdown(
+                """
+            <div class="step-card">
+                <small style="color: #A0AEC0; font-weight: 700;">01</small>
+                <h4 style="margin: 6px 0; color: #2D3748;">New Order</h4>
+                <p style="font-size: 0.82rem; color: #718096; margin: 0;">Instant thank you note sent as soon as payment is confirmed.</p>
+            </div>
+            """,
+                unsafe_allow_html=True,
+            )
+        with s2:
+            st.markdown(
+                """
+            <div class="step-card">
+                <small style="color: #A0AEC0; font-weight: 700;">02</small>
+                <h4 style="margin: 6px 0; color: #2D3748;">Dispatched</h4>
+                <p style="font-size: 0.82rem; color: #718096; margin: 0;">Tracking number and carrier details shared automatically.</p>
+            </div>
+            """,
+                unsafe_allow_html=True,
+            )
+        with s3:
+            st.markdown(
+                """
+            <div class="step-card">
+                <small style="color: #A0AEC0; font-weight: 700;">03</small>
+                <h4 style="margin: 6px 0; color: #2D3748;">Delivered</h4>
+                <p style="font-size: 0.82rem; color: #718096; margin: 0;">Friendly check-in asking for 5-star positive review.</p>
+            </div>
+            """,
+                unsafe_allow_html=True,
+            )
+        with s4:
+            st.markdown(
+                """
+            <div class="step-card">
+                <small style="color: #A0AEC0; font-weight: 700;">04</small>
+                <h4 style="margin: 6px 0; color: #2D3748;">Cancellation</h4>
+                <p style="font-size: 0.82rem; color: #718096; margin: 0;">Automated confirmation for cancelled transactions.</p>
+            </div>
+            """,
+                unsafe_allow_html=True,
             )
 
-            if submit_btn:
-                if (
-                    uname in users_db
-                    and users_db[uname]["password"] == hash_pass(pword)
-                ):
-                    st.session_state.logged_in = True
-                    st.session_state.username = uname
-                    st.session_state.role = users_db[uname]["role"]
-                    st.session_state.assigned_stores = users_db[uname].get(
-                        "assigned_stores", []
-                    )
-                    st.success(f"Welcome back, {uname}!")
-                    st.rerun()
-                else:
-                    st.error("Invalid username or password.")
+    else:
+        # Clean Login Form
+        c_l1, c_l2, c_l3 = st.columns([1, 1.4, 1])
+        with c_l2:
+            st.markdown("### 🔐 Sign In to OrderPing")
+            with st.form("login_form"):
+                uname = st.text_input("Username")
+                pword = st.text_input("Password", type="password")
+                submit_btn = st.form_submit_button(
+                    "Sign In", use_container_width=True, type="primary"
+                )
+
+                if submit_btn:
+                    if (
+                        uname in users_db
+                        and users_db[uname]["password"] == hash_pass(pword)
+                    ):
+                        st.session_state.logged_in = True
+                        st.session_state.username = uname
+                        st.session_state.role = users_db[uname]["role"]
+                        st.session_state.assigned_stores = users_db[uname].get(
+                            "assigned_stores", []
+                        )
+                        st.success("Signed in successfully!")
+                        st.rerun()
+                    else:
+                        st.error("Invalid username or password.")
+
+            if st.button("← Back to home"):
+                st.session_state.show_login = False
+                st.rerun()
     st.stop()
 
 
 # ==========================================================
-# 2. LOGGED IN CORPORATE SAAS DASHBOARD
+# 2. LOGGED IN DASHBOARD
 # ==========================================================
-
 if st.session_state.role == "admin":
     accessible_stores = stores
 else:
@@ -437,68 +551,37 @@ else:
         if k in st.session_state.assigned_stores
     }
 
-# --- SIDEBAR ---
-with st.sidebar:
-    st.markdown(
-        """
-    <div style="padding: 10px 0 14px 0; border-bottom: 1px solid #E2E8F0; margin-bottom: 15px;">
-        <span style="font-size: 1.25rem; color: #0F172A; font-weight: 700;">💼 eBay Hub</span>
-    </div>
-    """,
-        unsafe_allow_html=True,
-    )
-    st.markdown(
-        f"**User:** `{st.session_state.username}`  \n**Role:** `{st.session_state.role.upper()}`"
-    )
+tab_names = [
+    "📊 Orders & Automation",
+    "➕ Link Store",
+    "📝 Message Templates",
+]
+if st.session_state.role == "admin":
+    tab_names.append("👥 User Access")
 
-    if st.button("Logout", use_container_width=True, type="secondary"):
-        st.session_state.logged_in = False
-        st.session_state.username = None
-        st.session_state.role = None
-        st.session_state.assigned_stores = []
-        st.rerun()
+main_tabs = st.tabs(tab_names)
 
-    st.divider()
-    st.markdown("##### Navigation")
-
-    nav_options = [
-        "📊 Orders & Auto-Messaging",
-        "➕ Store Management",
-        "📝 Template Settings",
-    ]
-    if st.session_state.role == "admin":
-        nav_options.append("👥 User Access Control")
-
-    selected_page = st.radio("Menu", nav_options, label_visibility="collapsed")
-    st.divider()
-    st.caption("🔒 Verified eBay REST API Partner")
-
-
-# ==========================================================
-# PAGE 1: ORDERS & MESSAGING HUB
-# ==========================================================
-if selected_page == "📊 Orders & Auto-Messaging":
-    st.markdown("## 📊 Orders & Messaging Control")
-    st.caption("Sync live store orders, apply smart fulfillment filters, and dispatch customer updates.")
-
+# --- TAB 1: ORDERS & MESSAGING HUB ---
+with main_tabs[0]:
     if not accessible_stores:
-        st.warning(
-            "No stores are currently linked or assigned. Please link an account in **'Store Management'**."
+        st.info(
+            "No stores linked yet. Please use the **'Link Store'** tab to authorize your eBay account."
         )
     else:
-        active_store_name = st.selectbox(
-            "Select Store Channel:", list(accessible_stores.keys())
-        )
-        tokens = accessible_stores[active_store_name]
-
-        c_sync, _ = st.columns([1.5, 3])
-        with c_sync:
+        c_s1, c_s2 = st.columns([2, 1])
+        with c_s1:
+            active_store_name = st.selectbox(
+                "Active Store Channel:", list(accessible_stores.keys())
+            )
+            tokens = accessible_stores[active_store_name]
+        with c_s2:
+            st.write("")
             if st.button(
                 f"🔄 Sync Orders ({active_store_name})",
                 type="primary",
                 use_container_width=True,
             ):
-                with st.spinner("Fetching orders from eBay API..."):
+                with st.spinner("Fetching orders from eBay..."):
                     all_orders = fetch_all_ebay_orders(tokens["access_token"])
                     if not all_orders and tokens.get("refresh_token"):
                         new_t = get_fresh_token(tokens["refresh_token"])
@@ -508,13 +591,12 @@ if selected_page == "📊 Orders & Auto-Messaging":
                             all_orders = fetch_all_ebay_orders(new_t)
 
                     st.session_state[f"orders_{active_store_name}"] = all_orders
-                    st.success(f"Synced {len(all_orders)} orders successfully!")
+                    st.success(f"Loaded {len(all_orders)} orders!")
 
         orders = st.session_state.get(f"orders_{active_store_name}", [])
 
         if orders:
             st.divider()
-
             col_filter, col_template = st.columns([2, 2])
 
             filter_options = [
@@ -525,7 +607,7 @@ if selected_page == "📊 Orders & Auto-Messaging":
                 "📋 All Orders",
             ]
             with col_filter:
-                status_filter = st.selectbox("Target Filter Group:", filter_options)
+                status_filter = st.selectbox("Journey Stage Filter:", filter_options)
 
             target_tpl_name = "Brand New Order Welcome"
             if "Shipped" in status_filter:
@@ -539,7 +621,7 @@ if selected_page == "📊 Orders & Auto-Messaging":
 
             with col_template:
                 chosen_template = st.selectbox(
-                    "Active Message Template:",
+                    "Message Template:",
                     list(templates.keys()),
                     index=default_tpl_index,
                 )
@@ -564,14 +646,14 @@ if selected_page == "📊 Orders & Auto-Messaging":
                         display_orders.append(o)
 
             m1, m2, m3 = st.columns(3)
-            m1.metric("Total Synced", len(orders))
+            m1.metric("Synced Orders", len(orders))
             m2.metric("Filtered Matches", len(display_orders))
-            m3.metric("Template Selected", chosen_template)
+            m3.metric("Selected Template", chosen_template)
 
             st.write("")
 
             if st.button(
-                f"🚀 Send '{chosen_template}' to All ({len(display_orders)}) Matched Orders",
+                f"🚀 Send '{chosen_template}' to All ({len(display_orders)}) Orders",
                 type="primary",
             ):
                 progress_bar = st.progress(0)
@@ -627,11 +709,11 @@ if selected_page == "📊 Orders & Auto-Messaging":
 
                 save_json(LOGS_FILE, logs)
                 st.success(
-                    f"✅ {sent_count}/{len(display_orders)} messages successfully dispatched!"
+                    f"✅ {sent_count}/{len(display_orders)} messages dispatched by OrderPing!"
                 )
 
             st.divider()
-            st.markdown("### 📋 Order List & Message Customizer")
+            st.markdown("### 📋 Live Order Details")
 
             for o in display_orders:
                 order_id = o.get("orderId", "")
@@ -684,14 +766,14 @@ if selected_page == "📊 Orders & Auto-Messaging":
 
                     with c_act:
                         user_msg_input = st.text_area(
-                            f"Live Preview ({chosen_template}):",
+                            f"Preview ({chosen_template}):",
                             value=formatted_preview,
                             height=110,
                             key=f"input_{order_id}_{chosen_template}_{status_filter}",
                         )
 
                         if st.button(
-                            f"✉️ Send Message to {buyer}",
+                            f"✉️ Send to {buyer}",
                             key=f"btn_send_{order_id}_{chosen_template}",
                             type="secondary",
                         ):
@@ -714,169 +796,99 @@ if selected_page == "📊 Orders & Auto-Messaging":
                                     st.success(f"Sent to {buyer}!")
                                     st.rerun()
                                 else:
-                                    st.error("Failed to send message.")
+                                    st.error("Failed to send.")
 
+# --- TAB 2: LINK STORE ---
+with main_tabs[1]:
+    st.markdown("### ➕ Connect eBay Account")
+    st.markdown(f"[👉 **Click here to authorize with eBay**]({AUTH_URL})")
+    st.write("")
 
-# ==========================================================
-# PAGE 2: STORE MANAGEMENT
-# ==========================================================
-elif selected_page == "➕ Store Management":
-    st.markdown("## ➕ Store Management")
-    st.caption("Authenticate new eBay accounts via OAuth or manage existing store integrations.")
+    redirect_input = st.text_input("Paste Redirected URL / Authorization Code:")
+    store_alias = st.text_input("Store Name / Alias:")
 
-    c_link, c_manage = st.columns([1.2, 1])
+    if st.button("Save & Link Store", type="primary"):
+        if redirect_input and store_alias:
+            final_code = clean_auth_code(redirect_input)
+            status, token_data = exchange_code_for_tokens(final_code)
 
-    with c_link:
-        st.markdown("### 🔗 Authorize New Store")
-        st.info("Step 1: Click the authorization link below to authenticate with eBay:")
-        st.markdown(f"👉 [**Authorize with eBay (Click Here)**]({AUTH_URL})")
-        st.write("")
-
-        redirect_input = st.text_input("Redirected URL / Code:")
-        store_alias = st.text_input("Store Label (e.g. ASA Deals UK):")
-
-        if st.button("Complete Authorization", type="primary"):
-            if redirect_input and store_alias:
-                final_code = clean_auth_code(redirect_input)
-                status, token_data = exchange_code_for_tokens(final_code)
-
-                if status == 200 and "access_token" in token_data:
-                    stores[store_alias] = {
-                        "access_token": token_data["access_token"],
-                        "refresh_token": token_data.get("refresh_token", ""),
-                    }
-                    save_json(STORES_FILE, stores)
-                    st.success(f"Store '{store_alias}' linked successfully!")
-                    st.rerun()
-                else:
-                    st.error("Authentication failed. Please verify code/URL.")
+            if status == 200 and "access_token" in token_data:
+                stores[store_alias] = {
+                    "access_token": token_data["access_token"],
+                    "refresh_token": token_data.get("refresh_token", ""),
+                }
+                save_json(STORES_FILE, stores)
+                st.success(f"Store '{store_alias}' successfully connected!")
+                st.rerun()
             else:
-                st.warning("All fields are required.")
-
-    with c_manage:
-        st.markdown("### 🏬 Connected Stores")
-        if not accessible_stores:
-            st.info("No stores linked yet.")
+                st.error("Authorization failed. Check URL/Code.")
         else:
-            for s_name in list(accessible_stores.keys()):
-                with st.container():
-                    st.markdown(
-                        f"""
-                    <div style="padding: 12px 16px; background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 8px; margin-bottom: 10px;">
-                        <strong style="font-size: 1.05rem; color: #0F172A;">🏪 {s_name}</strong><br>
-                        <span style="color: #16A34A; font-size: 0.85rem; font-weight: 500;">● Connected & Active</span>
-                    </div>
-                    """,
-                        unsafe_allow_html=True,
-                    )
-                    if st.button(
-                        f"🗑️ Delete {s_name}",
-                        key=f"del_store_page_{s_name}",
-                        type="secondary",
-                    ):
-                        del stores[s_name]
-                        save_json(STORES_FILE, stores)
-                        st.success(f"Store '{s_name}' removed!")
-                        st.rerun()
+            st.warning("All fields are required.")
 
+    if accessible_stores:
+        st.divider()
+        st.markdown("### 🏬 Manage Linked Stores")
+        for s in list(accessible_stores.keys()):
+            c_m1, c_m2 = st.columns([3, 1])
+            with c_m1:
+                st.write(f"**🏪 {s}** (Connected & Active)")
+            with c_m2:
+                if st.button(f"🗑️ Remove", key=f"del_{s}", type="secondary"):
+                    del stores[s]
+                    save_json(STORES_FILE, stores)
+                    st.rerun()
 
-# ==========================================================
-# PAGE 3: TEMPLATE SETTINGS
-# ==========================================================
-elif selected_page == "📝 Template Settings":
-    st.markdown("## 📝 Template Settings")
-    st.caption("Manage personalized messaging templates using dynamic attributes.")
-
-    st.markdown(
-        """
-    **Supported Dynamic Variables:**
-    * `{buyer}`: Automatically maps to the customer's eBay username.
-    * `{order_id}`: Replaced with the corresponding Order ID.
-    * `{carrier}`: Carrier name from eBay fulfillment.
-    * `{tracking_number}`: Tracking number uploaded to the order.
-    """
-    )
-    st.divider()
-
+# --- TAB 3: MESSAGE TEMPLATES ---
+with main_tabs[2]:
+    st.markdown("### 📝 Message Templates")
     selected_tpl_edit = st.selectbox(
-        "Select Template to Edit:", list(templates.keys())
+        "Choose Template to Edit:", list(templates.keys())
     )
     tpl_body = st.text_area(
-        "Template Content:",
+        "Template Body (use {buyer}, {order_id}, {carrier}, {tracking_number}):",
         value=templates[selected_tpl_edit],
         height=180,
-        key=f"editor_{selected_tpl_edit}",
     )
-
     if st.button("Save Template", type="primary"):
         templates[selected_tpl_edit] = tpl_body
         save_json(TEMPLATES_FILE, templates)
-        st.success(f"Template '{selected_tpl_edit}' saved successfully!")
+        st.success("Template saved!")
         st.rerun()
 
+# --- TAB 4: ADMIN USER ACCESS ---
+if st.session_state.role == "admin":
+    with main_tabs[3]:
+        st.markdown("### 👥 User Access Control")
+        c_u1, c_u2 = st.columns([1, 1])
+        with c_u1:
+            st.markdown("#### Create New Client")
+            new_uname = st.text_input("Username:")
+            new_pword = st.text_input("Password:", type="password")
+            store_choices = list(stores.keys())
+            assigned_store = st.selectbox(
+                "Assign Store:",
+                store_choices if store_choices else ["No stores"],
+            )
 
-# ==========================================================
-# PAGE 4: USER ACCESS CONTROL (ADMIN ONLY)
-# ==========================================================
-elif (
-    selected_page == "👥 User Access Control"
-    and st.session_state.role == "admin"
-):
-    st.markdown("## 👥 User Access Control")
-    st.caption("Create dedicated client accounts and assign store access permissions.")
-
-    c_u1, c_u2 = st.columns([1.2, 1])
-
-    with c_u1:
-        st.markdown("### ➕ Create Client User")
-        new_uname = st.text_input("Username:")
-        new_pword = st.text_input("Password:", type="password")
-        store_choices = list(stores.keys())
-        assigned_store = st.selectbox(
-            "Assign Store:",
-            store_choices if store_choices else ["No stores connected"],
-        )
-
-        if st.button("Create Account", type="primary"):
-            if (
-                new_uname
-                and new_pword
-                and assigned_store != "No stores connected"
-            ):
-                if new_uname in users_db:
-                    st.error("Username already exists!")
-                else:
-                    users_db[new_uname] = {
-                        "password": hash_pass(new_pword),
-                        "role": "client",
-                        "assigned_stores": [assigned_store],
-                    }
-                    save_json(USERS_FILE, users_db)
-                    st.success(f"Account for '{new_uname}' created successfully!")
-                    st.rerun()
-            else:
-                st.warning("All fields are required.")
-
-    with c_u2:
-        st.markdown("### 📋 Active Users")
-        for u, data in users_db.items():
-            with st.container():
-                st.markdown(
-                    f"""
-                <div style="padding: 10px 14px; background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 8px; margin-bottom: 8px;">
-                    <strong>👤 {u}</strong> ({data['role'].upper()})<br>
-                    <small style="color: #64748B;">Assigned: {data.get('assigned_stores')}</small>
-                </div>
-                """,
-                    unsafe_allow_html=True,
-                )
-                if u != "admin":
-                    if st.button(
-                        f"🗑️ Delete User {u}",
-                        key=f"del_user_{u}",
-                        type="secondary",
-                    ):
-                        del users_db[u]
+            if st.button("Create Account", type="primary"):
+                if new_uname and new_pword and assigned_store != "No stores":
+                    if new_uname in users_db:
+                        st.error("User exists!")
+                    else:
+                        users_db[new_uname] = {
+                            "password": hash_pass(new_pword),
+                            "role": "client",
+                            "assigned_stores": [assigned_store],
+                        }
                         save_json(USERS_FILE, users_db)
-                        st.success(f"User '{u}' removed!")
+                        st.success(f"Account for '{new_uname}' created!")
                         st.rerun()
+                else:
+                    st.warning("All fields are required.")
+
+        with c_u2:
+            st.markdown("#### Existing Users")
+            for u, data in users_db.items():
+                st.write(
+                    f"**👤 {u}** ({data['role'].upper()}) — Store: {data.get('assigned_stores')}"
+                )
