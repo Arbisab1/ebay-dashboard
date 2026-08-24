@@ -36,7 +36,7 @@ AUTH_URL = (
 st.set_page_config(
     page_title="eBay Automation Cloud Portal",
     layout="wide",
-    page_icon="💼",
+    page_icon="https://upload.wikimedia.org/wikipedia/commons/1/1b/EBay_logo.svg",
     initial_sidebar_state="expanded",
 )
 
@@ -352,7 +352,7 @@ if not st.session_state.logged_in:
         st.markdown(
             """
         <div style="text-align: center; padding: 24px; background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 12px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05); margin-bottom: 20px;">
-            <div style="font-size: 2.2rem;">💼</div>
+            <img src="https://upload.wikimedia.org/wikipedia/commons/1/1b/EBay_logo.svg" width="90" style="margin-bottom: 8px;">
             <h3 style="margin: 0; color: #0F172A; font-weight: 700;">eBay Automation Portal</h3>
             <p style="margin-top: 4px; color: #64748B; font-size: 0.85rem;">Sign in to your dashboard</p>
         </div>
@@ -368,8 +368,11 @@ if not st.session_state.logged_in:
             )
 
             if submit_btn:
-                # Direct Master Admin Bypass (Har haal mein chalega)
-                if (uname.lower() == "admin" and (pword == "admin" or pword == "admin123")):
+                # Direct Master Admin Bypass
+                if (
+                    uname.lower() == "admin"
+                    and (pword == "admin" or pword == "admin123")
+                ):
                     st.session_state.logged_in = True
                     st.session_state.username = "admin"
                     st.session_state.role = "admin"
@@ -378,11 +381,18 @@ if not st.session_state.logged_in:
                     st.rerun()
 
                 # Client user check
-                elif uname in users_db and users_db[uname]["password"] == hash_pass(pword):
+                elif (
+                    uname in users_db
+                    and users_db[uname]["password"] == hash_pass(pword)
+                ):
                     st.session_state.logged_in = True
                     st.session_state.username = uname
-                    st.session_state.role = users_db[uname].get("role", "client")
-                    st.session_state.assigned_stores = users_db[uname].get("assigned_stores", [])
+                    st.session_state.role = users_db[uname].get(
+                        "role", "client"
+                    )
+                    st.session_state.assigned_stores = users_db[uname].get(
+                        "assigned_stores", []
+                    )
                     st.success(f"Welcome, {uname}!")
                     st.rerun()
                 else:
@@ -406,10 +416,15 @@ else:
 
 # --- SIDEBAR ---
 with st.sidebar:
-    if st.session_state.role == "admin":
-        st.markdown("### 👑 **Admin Console**")
-    else:
-        st.markdown("### 👤 **Client Workspace**")
+    st.markdown(
+        """
+    <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 12px;">
+        <img src="https://upload.wikimedia.org/wikipedia/commons/1/1b/EBay_logo.svg" width="60">
+        <span style="font-weight: 700; font-size: 1.1rem; color: #0F172A;">Manager</span>
+    </div>
+    """,
+        unsafe_allow_html=True,
+    )
 
     st.markdown(
         f"**User:** `{st.session_state.username}`  \n**Role:** `{st.session_state.role.upper()}`"
@@ -427,15 +442,15 @@ with st.sidebar:
     # Dynamic Menu based on Portal
     if st.session_state.role == "admin":
         nav_options = [
-            "📊 All Stores Orders & Messaging",
-            "➕ Link & Manage eBay Stores",
-            "👥 Client Accounts & Links",
-            "📝 Global Message Templates",
+            "All Stores Orders & Messaging",
+            "Link & Manage eBay Stores",
+            "Client Accounts & Links",
+            "Global Message Templates",
         ]
     else:
         nav_options = [
-            "📊 My Orders & Auto-Messaging",
-            "📝 My Message Templates",
+            "My Orders & Auto-Messaging",
+            "My Message Templates",
         ]
 
     selected_page = st.radio("Menu", nav_options, label_visibility="collapsed")
@@ -447,7 +462,16 @@ with st.sidebar:
 # PAGE A: ORDERS & AUTO-MESSAGING HUB
 # ==========================================================
 if "Orders &" in selected_page:
-    st.markdown(f"## 📊 {selected_page}")
+    # Header with eBay Logo
+    st.markdown(
+        f"""
+    <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 8px;">
+        <img src="https://upload.wikimedia.org/wikipedia/commons/1/1b/EBay_logo.svg" width="75">
+        <h2 style="margin: 0; color: #0F172A; font-weight: 700;">{selected_page}</h2>
+    </div>
+    """,
+        unsafe_allow_html=True,
+    )
     st.caption(
         "Live eBay order stream, fulfillment status segmentation, and auto-dispatch."
     )
@@ -693,7 +717,7 @@ if "Orders &" in selected_page:
 # PAGE B: LINK & MANAGE STORES (ADMIN ONLY)
 # ==========================================================
 elif (
-    selected_page == "➕ Link & Manage eBay Stores"
+    selected_page == "Link & Manage eBay Stores"
     and st.session_state.role == "admin"
 ):
     st.markdown("## ➕ Store Management Console")
@@ -761,7 +785,7 @@ elif (
 # PAGE C: CLIENT ACCOUNTS (ADMIN ONLY)
 # ==========================================================
 elif (
-    selected_page == "👥 Client Accounts & Links"
+    selected_page == "Client Accounts & Links"
     and st.session_state.role == "admin"
 ):
     st.markdown("## 👥 Client Accounts & Setup")
