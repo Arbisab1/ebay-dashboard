@@ -420,7 +420,7 @@ def get_clean_order_status(o):
 # --- INITIALIZE DATABASE ---
 stores = load_json(STORES_FILE, {})
 users_db = load_json(USERS_FILE, {})
-templates = load_json(TEMPLATES_FILE, DEFAULTTEMPLATES := DEFAULT_TEMPLATES)
+templates = load_json(TEMPLATES_FILE, DEFAULT_TEMPLATES)
 logs = load_json(LOGS_FILE, {})
 
 if "logged_in" not in st.session_state:
@@ -954,19 +954,19 @@ if "Orders &" in selected_page:
 
 
 # ==========================================================
-# PAGE B: SALES & REVENUE REPORTS (AD RATE % DEDUCTION)
+# PAGE B: SALES & REVENUE REPORTS (CLEANED COLUMNS)
 # ==========================================================
 elif selected_page == "📈 Sales & Revenue Reports":
     st.markdown(
         """
     <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 8px;">
         <img src="https://upload.wikimedia.org/wikipedia/commons/1/1b/EBay_logo.svg" width="75">
-        <h2 style="margin: 0; color: #0F172A; font-weight: 700;">Sales, Net Earnings & Ad Rate Reports</h2>
+        <h2 style="margin: 0; color: #0F172A; font-weight: 700;">Sales & Subtotal Reports</h2>
     </div>
     """,
         unsafe_allow_html=True,
     )
-    st.caption("Exact Order Earnings calculated by deducting Promoted Listings Ad Rate (%) and Final Value Fees from Gross.")
+    st.caption("Clean financial breakdown categorized by status and downloadable CSV reports.")
 
     if not accessible_stores:
         st.info("👋 Welcome! Your store is not connected yet.")
@@ -1005,7 +1005,7 @@ elif selected_page == "📈 Sales & Revenue Reports":
 
         if refresh_sales_btn or sales_hash != last_sales_hash:
             if not (not fetch_all_sales_toggle and sales_start_date > sales_end_date):
-                with st.spinner("Extracting accurate Seller Hub earnings and Ad Rate percentages..."):
+                with st.spinner("Fetching sales and subtotal records..."):
                     access_token = tokens["access_token"]
                     test_headers = {"Authorization": f"Bearer {access_token}"}
                     test_res = requests.get("https://api.ebay.com/sell/fulfillment/v1/order?limit=1", headers=test_headers)
@@ -1039,87 +1039,13 @@ elif selected_page == "📈 Sales & Revenue Reports":
                 
                 pricing = o.get("pricingSummary", {})
                 
-                # 1. Subtotal (Items Gross Price)
+                # Subtotal
                 subtotal_obj = pricing.get("priceSubtotal", {})
                 if not subtotal_obj:
                     subtotal_obj = pricing.get("subtotal", {})
+                
                 amount_subtotal = float(subtotal_obj.get("value", 0.0))
                 currency_code = subtotal_obj.get("currency", currency_code)
-
-                # 2. Shipping Charged to Buyer
-                delivery_cost_obj = pricing.get("deliveryCost", {})
-                delivery_cost = float(delivery_cost_obj.get("value", 0.0))
-
-                # 3. Base eBay Final Value Fees (Standard)
-                ebay_base_fees = 0.0
-                order_fee_obj = o.get("totalMarketplaceFee", {})
-                ebay_base_fees += float(order_fee_obj.get("value", 0.0))
-
-                # 4. Extract Ad Rate Percentage & Calculate Direct Ad Fee
-                ad_percentage_val = 0.0
-                ad_fee_found = 0.0
-
-                for li in o.get("lineItems", []):
-                    # Check direct ad fee in line item fees
-                    for fee in li.get("marketplaceFees", []):
-                        f_val = float(fee.get("amount", {}).get("value", 0.0))
-                        f_type = fee.get("feeType", "").upper()
-                        if "AD" in f_type or "PROMOTED" in f_type:
-                            ad_fee_found += f_val
-                        else:
-                            ebay_base_fees += f_val
-
-                    # Check promotions block
-                    for promo in li.get("appliedPromotions", []):
-                        disc_val = float(promo.get("discountAmount", {}).get("value", 0.0))
-                        if disc_val > 0:
-                            ad_fee_found += disc_val
-                        
-                        # Parse rate percentage
-                        rate_raw = promo.get("promotionRate", promo.get("rate", promo.get("percentage", 0.0)))
-                        try:
-                            rate_clean = float(str(rate_raw).replace("%", "").strip())
-                            ad_percentage_val = max(ad_percentage_val, rate_clean)
-                        except Exception:
-                            pass
-
-                # Inspect Payment Breakdown for Ad Fees
-                payment_summary = o.get("paymentSummary", {})
-                for p in payment_summary.get("payments", []):
-                    for fd in p.get("feeDetails", []):
-                        f_amt = float(fd.get("amount", {}).get("value", 0.0))
-                        f_type = fd.get("feeType", "").upper()
-                        if "AD" in f_type or "PROMOTED" in f_type:
-                            ad_fee_found += f_amt
-                        else:
-                            ebay_base_fees += f_amt
-
-                # If Ad percentage is set (e.g. 2.0%) or fee found:
-                if ad_percentage_val > 0.0:
-                    calculated_ad_fee = (amount_subtotal * (ad_percentage_val / 100.0))
-                    ad_fee_amount = max(ad_fee_found, calculated_ad_fee)
-                else:
-                    if ad_fee_found > 0.0 and amount_subtotal > 0.0:
-                        ad_percentage_val = round((ad_fee_found / amount_subtotal) * 100.0, 1)
-                        ad_fee_amount = ad_fee_found
-                    else:
-                        ad_fee_amount = 0.0
-
-                ad_rate_str = f"{ad_percentage_val:.1f}%" if ad_percentage_val > 0 else "0.0% (Organic)"
-
-                # 5. Refunds & Returns Deductions
-                refunds_list = payment_summary.get("refunds", [])
-                refund_amount = 0.0
-                for r in refunds_list:
-                    try:
-                        refund_amount += float(r.get("amount", {}).get("value", 0.0))
-                    except Exception:
-                        pass
-
-                # 6. Final Order Earnings Calculation
-                gross_pool = amount_subtotal + delivery_cost
-                total_all_deductions = ebay_base_fees + ad_fee_amount + refund_amount
-                order_earnings = round(max(0.0, gross_pool - total_all_deductions), 2)
 
                 status_raw, status_badge = get_clean_order_status(o)
 
@@ -1139,13 +1065,9 @@ elif selected_page == "📈 Sales & Revenue Reports":
                     "Items": ", ".join(items_titles),
                     "Quantity": total_qty,
                     "Amount subtotal": amount_subtotal,
-                    "Ad Rate (%)": ad_rate_str,
-                    "Ad Fee Amount": round(ad_fee_amount, 2),
-                    "Order Earnings": order_earnings,
                     "Currency": currency_code,
                     "Status": status_badge,
-                    "RawStatus": status_raw,
-                    "RefundAmount": refund_amount
+                    "RawStatus": status_raw
                 })
 
             st.divider()
@@ -1153,7 +1075,7 @@ elif selected_page == "📈 Sales & Revenue Reports":
             # --- STATUS SEGMENT SELECTOR ---
             st.markdown("#### 🎯 Select Sheet Category")
             sales_segment_options = [
-                "📊 All Successful Sales (Net Earnings)",
+                "📊 All Successful Sales",
                 "🚚 Shipped Orders (In-Transit)",
                 "📦 Delivered Orders (Completed)",
                 "❌ Cancelled Orders (Unfulfilled)",
@@ -1163,7 +1085,7 @@ elif selected_page == "📈 Sales & Revenue Reports":
             chosen_segment = st.selectbox("View Report Sheet:", sales_segment_options, key="sales_segment_selector")
 
             # Filter rows based on segment
-            if chosen_segment == "📊 All Successful Sales (Net Earnings)":
+            if chosen_segment == "📊 All Successful Sales":
                 filtered_rows = [r for r in parsed_all_rows if r["RawStatus"] not in ["CANCELLED", "REFUNDED"]]
             elif chosen_segment == "🚚 Shipped Orders (In-Transit)":
                 filtered_rows = [r for r in parsed_all_rows if r["RawStatus"] == "SHIPPED"]
@@ -1172,33 +1094,27 @@ elif selected_page == "📈 Sales & Revenue Reports":
             elif chosen_segment == "❌ Cancelled Orders (Unfulfilled)":
                 filtered_rows = [r for r in parsed_all_rows if r["RawStatus"] == "CANCELLED"]
             elif chosen_segment == "💸 Refunded Orders (Returns & Refunds)":
-                filtered_rows = [r for r in parsed_all_rows if r["RawStatus"] == "REFUNDED" or r["RefundAmount"] > 0]
+                filtered_rows = [r for r in parsed_all_rows if r["RawStatus"] == "REFUNDED"]
             else:
                 filtered_rows = parsed_all_rows
 
             # KPI Calculations
-            if "Refunded" in chosen_segment:
-                segment_revenue = sum(r["RefundAmount"] if r["RefundAmount"] > 0 else r["Order Earnings"] for r in filtered_rows)
-            else:
-                segment_revenue = sum(r["Order Earnings"] for r in filtered_rows)
-
             segment_subtotal = sum(r["Amount subtotal"] for r in filtered_rows)
             segment_orders_count = len(filtered_rows)
             segment_items_count = sum(r["Quantity"] for r in filtered_rows)
-            segment_aov = (segment_revenue / segment_orders_count) if segment_orders_count > 0 else 0.0
+            segment_aov = (segment_subtotal / segment_orders_count) if segment_orders_count > 0 else 0.0
 
             # KPI Display
             k1, k2, k3, k4 = st.columns(4)
-            metric_rev_label = "Total Refunded Amount" if "Refunded" in chosen_segment else "Total Net Order Earnings"
-            k1.metric(metric_rev_label, f"{currency_code} {segment_revenue:,.2f}")
+            k1.metric("Total Subtotal", f"{currency_code} {segment_subtotal:,.2f}")
             k2.metric("Total Orders", segment_orders_count)
-            k3.metric("Total Subtotal", f"{currency_code} {segment_subtotal:,.2f}")
+            k3.metric("Avg Order Value (AOV)", f"{currency_code} {segment_aov:,.2f}")
             k4.metric("Total Quantity Sold", segment_items_count)
 
             st.divider()
 
-            # Format and Export Table (including Ad Rate % & Ad Fee Amount)
-            df_display = pd.DataFrame(filtered_rows).drop(columns=["RawStatus", "RefundAmount"])
+            # Format and Export Table
+            df_display = pd.DataFrame(filtered_rows).drop(columns=["RawStatus"])
 
             c_head, c_dl = st.columns([3, 1])
             with c_head:
