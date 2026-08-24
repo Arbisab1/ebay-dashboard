@@ -653,18 +653,20 @@ if "Orders &" in selected_page:
         tokens = accessible_stores[active_store_name]
 
         st.divider()
-        st.markdown("#### 📅 Select Order Date Range & Sync")
+        st.markdown("#### 🔄 Sync Orders from eBay")
         
-        # --- DATE RANGE SELECTION ---
+        # --- DATE FILTER / ALL ORDERS SWITCH ---
+        fetch_all_orders_toggle = st.checkbox("📋 Fetch ALL Orders (No Date Limit)", value=False)
+        
         col_date1, col_date2, col_sync_btn = st.columns([2, 2, 1.5])
         
         with col_date1:
             default_start = (datetime.now() - timedelta(days=30)).date()
-            start_date = st.date_input("From Date:", value=default_start)
+            start_date = st.date_input("From Date:", value=default_start, disabled=fetch_all_orders_toggle)
             
         with col_date2:
             default_end = datetime.now().date()
-            end_date = st.date_input("To Date:", value=default_end)
+            end_date = st.date_input("To Date:", value=default_end, disabled=fetch_all_orders_toggle)
 
         with col_sync_btn:
             st.write("")
@@ -673,13 +675,15 @@ if "Orders &" in selected_page:
                 type="primary",
                 use_container_width=True,
             ):
-                if start_date > end_date:
+                if not fetch_all_orders_toggle and start_date > end_date:
                     st.error("'From Date' cannot be after 'To Date'.")
                 else:
                     with st.spinner("Fetching orders from eBay API..."):
-                        ebay_start = f"{start_date}T00:00:00.000Z"
-                        ebay_end = f"{end_date}T23:59:59.999Z"
-                        date_tuple = (ebay_start, ebay_end)
+                        date_tuple = None
+                        if not fetch_all_orders_toggle:
+                            ebay_start = f"{start_date}T00:00:00.000Z"
+                            ebay_end = f"{end_date}T23:59:59.999Z"
+                            date_tuple = (ebay_start, ebay_end)
                         
                         all_orders = fetch_all_ebay_orders(tokens["access_token"], date_filter=date_tuple)
                         
@@ -691,7 +695,7 @@ if "Orders &" in selected_page:
                                 all_orders = fetch_all_ebay_orders(new_t, date_filter=date_tuple)
 
                         st.session_state[f"orders_{active_store_name}"] = all_orders
-                        st.success(f"Synced {len(all_orders)} orders successfully for selected range!")
+                        st.success(f"Synced {len(all_orders)} orders successfully!")
 
         orders = st.session_state.get(f"orders_{active_store_name}", [])
 
@@ -700,11 +704,11 @@ if "Orders &" in selected_page:
             col_filter, col_template = st.columns([2, 2])
 
             filter_options = [
+                "📋 All Orders",
                 "🆕 Brand New Orders (Unfulfilled)",
                 "🚚 Shipped Orders (In-Transit)",
                 "📦 Delivered Orders",
                 "❌ Cancelled Orders",
-                "📋 All Orders",
             ]
             with col_filter:
                 status_filter = st.selectbox("Target Filter Group:", filter_options)
@@ -774,7 +778,9 @@ if "Orders &" in selected_page:
 
                     for inst in o.get("fulfillmentStartInstructions", []):
                         step = inst.get("shippingStep", {})
-                        track_info = step.get("shipmentTracking", {}).get("trackingNumber")
+                        track_info = step.get(
+                            "shipmentTracking", {}
+                        ).get("trackingNumber")
                         carrier_info = step.get("shippingCarrierCode")
                         if track_info:
                             tracking_num = track_info
@@ -797,14 +803,18 @@ if "Orders &" in selected_page:
                             logs[f"{order_id}_{chosen_template}"] = {
                                 "buyer": buyer,
                                 "status": "Sent",
-                                "time": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                                "time": datetime.now().strftime(
+                                    "%Y-%m-%d %H:%M:%S"
+                                ),
                             }
 
                     time.sleep(0.3)
                     progress_bar.progress((i + 1) / len(display_orders))
 
                 save_json(LOGS_FILE, logs)
-                st.success(f"✅ {sent_count}/{len(display_orders)} messages dispatched!")
+                st.success(
+                    f"✅ {sent_count}/{len(display_orders)} messages dispatched!"
+                )
 
             st.divider()
             st.markdown("### 📋 Order List & Direct Actions")
@@ -813,8 +823,14 @@ if "Orders &" in selected_page:
                 order_id = o.get("orderId", "")
                 buyer = o.get("buyer", {}).get("username", "Buyer")
                 line_items = o.get("lineItems", [])
-                item_title = line_items[0].get("title", "Item") if line_items else ""
-                item_id = line_items[0].get("legacyItemId", "N/A") if line_items else "N/A"
+                item_title = (
+                    line_items[0].get("title", "Item") if line_items else ""
+                )
+                item_id = (
+                    line_items[0].get("legacyItemId", "N/A")
+                    if line_items
+                    else "N/A"
+                )
 
                 _, clean_badge = get_clean_order_status(o)
 
@@ -823,7 +839,9 @@ if "Orders &" in selected_page:
 
                 for inst in o.get("fulfillmentStartInstructions", []):
                     step = inst.get("shippingStep", {})
-                    track_info = step.get("shipmentTracking", {}).get("trackingNumber")
+                    track_info = step.get(
+                        "shipmentTracking", {}
+                    ).get("trackingNumber")
                     carrier_info = step.get("shippingCarrierCode")
                     if track_info:
                         tracking_num = track_info
@@ -874,7 +892,9 @@ if "Orders &" in selected_page:
                                     logs[log_key] = {
                                         "buyer": buyer,
                                         "status": "Sent",
-                                        "time": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                                        "time": datetime.now().strftime(
+                                            "%Y-%m-%d %H:%M:%S"
+                                        ),
                                     }
                                     save_json(LOGS_FILE, logs)
                                     st.success(f"Sent to {buyer}!")
@@ -886,9 +906,14 @@ if "Orders &" in selected_page:
 # ==========================================================
 # PAGE B: LINK & MANAGE STORES (ADMIN OR CLIENT SELF-CONNECT)
 # ==========================================================
-elif "Connect My eBay Store" in selected_page or "Link & Manage eBay Stores" in selected_page:
+elif (
+    "Connect My eBay Store" in selected_page
+    or "Link & Manage eBay Stores" in selected_page
+):
     st.markdown("## ➕ Connect & Authorize eBay Store")
-    st.caption("Securely authenticate your production eBay account via official OAuth.")
+    st.caption(
+        "Securely authenticate your production eBay account via official OAuth."
+    )
 
     c_link, c_manage = st.columns([1.2, 1])
 
@@ -899,8 +924,13 @@ elif "Connect My eBay Store" in selected_page or "Link & Manage eBay Stores" in 
         st.write("")
 
         redirect_input = st.text_input("Redirected URL / Code:")
-        
-        assigned_s = st.session_state.assigned_stores[0] if st.session_state.assigned_stores and st.session_state.assigned_stores[0] != "ALL" else ""
+
+        assigned_s = (
+            st.session_state.assigned_stores[0]
+            if st.session_state.assigned_stores
+            and st.session_state.assigned_stores[0] != "ALL"
+            else ""
+        )
         store_alias = st.text_input("Store Name / Label:", value=assigned_s)
 
         if st.button("Complete Authorization", type="primary"):
@@ -914,7 +944,7 @@ elif "Connect My eBay Store" in selected_page or "Link & Manage eBay Stores" in 
                         "refresh_token": token_data.get("refresh_token", ""),
                     }
                     save_json(STORES_FILE, stores)
-                    
+
                     u_curr = st.session_state.username
                     if u_curr in users_db:
                         users_db[u_curr]["assigned_stores"] = [store_alias]
@@ -945,7 +975,11 @@ elif "Connect My eBay Store" in selected_page or "Link & Manage eBay Stores" in 
                     """,
                         unsafe_allow_html=True,
                     )
-                    if st.button(f"🗑️ Disconnect {s_name}", key=f"del_store_{s_name}", type="secondary"):
+                    if st.button(
+                        f"🗑️ Disconnect {s_name}",
+                        key=f"del_store_{s_name}",
+                        type="secondary",
+                    ):
                         del stores[s_name]
                         save_json(STORES_FILE, stores)
                         st.success(f"Store '{s_name}' removed!")
@@ -955,19 +989,24 @@ elif "Connect My eBay Store" in selected_page or "Link & Manage eBay Stores" in 
 # ==========================================================
 # PAGE C: REGISTERED CLIENTS OVERVIEW (ADMIN ONLY)
 # ==========================================================
-elif selected_page == "Registered Clients Overview" and st.session_state.role == "admin":
+elif (
+    selected_page == "Registered Clients Overview"
+    and st.session_state.role == "admin"
+):
     st.markdown("## 👥 Self-Registered Clients & Stores")
-    st.caption("Monitor all registered clients, their store names, and connected status.")
+    st.caption(
+        "Monitor all registered clients, their store names, and connected status."
+    )
 
     client_users = {k: v for k, v in users_db.items() if k != "admin"}
-    
+
     if not client_users:
         st.info("No clients have signed up yet.")
     else:
         for u, data in client_users.items():
             assigned = data.get("assigned_stores", ["N/A"])[0]
             is_connected = assigned in stores
-            
+
             with st.container():
                 st.markdown(
                     f"""
@@ -985,7 +1024,11 @@ elif selected_page == "Registered Clients Overview" and st.session_state.role ==
                 """,
                     unsafe_allow_html=True,
                 )
-                if st.button(f"🗑️ Delete Client {u}", key=f"del_client_{u}", type="secondary"):
+                if st.button(
+                    f"🗑️ Delete Client {u}",
+                    key=f"del_client_{u}",
+                    type="secondary",
+                ):
                     del users_db[u]
                     save_json(USERS_FILE, users_db)
                     st.success(f"Client '{u}' removed!")
@@ -1012,7 +1055,9 @@ elif "Message Templates" in selected_page:
     )
     st.divider()
 
-    selected_tpl_edit = st.selectbox("Select Template to Edit:", list(templates.keys()))
+    selected_tpl_edit = st.selectbox(
+        "Select Template to Edit:", list(templates.keys())
+    )
     tpl_body = st.text_area(
         "Template Content:",
         value=templates[selected_tpl_edit],
