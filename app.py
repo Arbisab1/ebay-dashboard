@@ -954,7 +954,7 @@ if "Orders &" in selected_page:
 
 
 # ==========================================================
-# PAGE B: SALES & REVENUE REPORTS (CLEANED COLUMNS)
+# PAGE B: SALES & REVENUE REPORTS (FIXED DATAFRAME SAFETY)
 # ==========================================================
 elif selected_page == "📈 Sales & Revenue Reports":
     st.markdown(
@@ -966,7 +966,7 @@ elif selected_page == "📈 Sales & Revenue Reports":
     """,
         unsafe_allow_html=True,
     )
-    st.caption("Clean financial breakdown categorized by status and downloadable CSV reports.")
+    st.caption("Financial breakdown categorized by status and downloadable CSV reports.")
 
     if not accessible_stores:
         st.info("👋 Welcome! Your store is not connected yet.")
@@ -1113,8 +1113,12 @@ elif selected_page == "📈 Sales & Revenue Reports":
 
             st.divider()
 
-            # Format and Export Table
-            df_display = pd.DataFrame(filtered_rows).drop(columns=["RawStatus"])
+            # Format and Export Table safely with drop errors='ignore'
+            expected_cols = ["Order ID", "Date", "Buyer", "Items", "Quantity", "Amount subtotal", "Currency", "Status"]
+            if filtered_rows:
+                df_display = pd.DataFrame(filtered_rows).drop(columns=["RawStatus"], errors="ignore")
+            else:
+                df_display = pd.DataFrame(columns=expected_cols)
 
             c_head, c_dl = st.columns([3, 1])
             with c_head:
