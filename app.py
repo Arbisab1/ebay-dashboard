@@ -353,7 +353,7 @@ def get_template_index(tpl_dict, target_key):
 
 
 def get_clean_order_status(o):
-    # 1. Check for True Payment Refunds
+    # Check for True Payment Refunds
     payment_summary = o.get("paymentSummary", {})
     refunds_list = payment_summary.get("refunds", [])
     total_refunded_val = 0.0
@@ -367,13 +367,13 @@ def get_clean_order_status(o):
     if total_refunded_val > 0 or payment_status in ["REFUNDED", "PARTIALLY_REFUNDED"]:
         return "REFUNDED", "💸 Refunded"
 
-    # 2. Check for Pure Cancellations
+    # Check for Pure Cancellations
     cancel_state = o.get("cancelStatus", {}).get("cancelState", "").strip().upper()
     cancel_req = o.get("cancelStatus", {}).get("cancelRequests", [])
     if cancel_state in ["CANCELED", "CANCELLED", "CANCEL_REQUESTED", "IN_PROGRESS"] or len(cancel_req) > 0:
         return "CANCELLED", "❌ Cancelled"
 
-    # 3. Check for Delivery & Shipping
+    # Check for Delivery & Shipping
     f_status = o.get("orderFulfillmentStatus", "NOT_STARTED")
     instructions = o.get("fulfillmentStartInstructions", [])
     has_tracking = False
@@ -957,19 +957,19 @@ if "Orders &" in selected_page:
 
 
 # ==========================================================
-# PAGE B: SALES & REVENUE REPORTS WITH DISTINCT CANCEL & REFUND
+# PAGE B: SALES & REVENUE REPORTS WITH REQUESTED COLUMNS
 # ==========================================================
 elif selected_page == "📈 Sales & Revenue Reports":
     st.markdown(
         """
     <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 8px;">
         <img src="https://upload.wikimedia.org/wikipedia/commons/1/1b/EBay_logo.svg" width="75">
-        <h2 style="margin: 0; color: #0F172A; font-weight: 700;">Sales, Cancellations & Refunds Reports</h2>
+        <h2 style="margin: 0; color: #0F172A; font-weight: 700;">Sales, Earnings & Refund Reports</h2>
     </div>
     """,
         unsafe_allow_html=True,
     )
-    st.caption("Financial performance with distinct segmented sheets for Cancellations vs Actual Refunds.")
+    st.caption("Financial breakdown with detailed subtotal, earnings, item quantities, and distinct refund tracking.")
 
     if not accessible_stores:
         st.info("👋 Welcome! Your store is not connected yet.")
@@ -1040,14 +1040,23 @@ elif selected_page == "📈 Sales & Revenue Reports":
                 created_date = o.get("creationDate", "")[:10]
                 buyer = o.get("buyer", {}).get("username", "Buyer")
                 
-                # Pricing
+                # Pricing breakdown from eBay API
                 pricing = o.get("pricingSummary", {})
+                
+                # 1. Total Order Earnings / Gross Total
                 total_obj = pricing.get("total", {})
-                order_total = float(total_obj.get("value", 0.0))
+                order_earnings = float(total_obj.get("value", 0.0))
                 currency_code = total_obj.get("currency", currency_code)
                 
+                # 2. Subtotal (Items price before tax/shipping or fallback to item subtotal)
+                subtotal_obj = pricing.get("priceSubtotal", {})
+                if not subtotal_obj:
+                    subtotal_obj = pricing.get("subtotal", {})
+                amount_subtotal = float(subtotal_obj.get("value", order_earnings))
+
                 status_raw, status_badge = get_clean_order_status(o)
 
+                # Line items & quantity
                 line_items = o.get("lineItems", [])
                 items_titles = []
                 total_qty = 0
@@ -1062,7 +1071,8 @@ elif selected_page == "📈 Sales & Revenue Reports":
                     "Buyer": buyer,
                     "Items": ", ".join(items_titles),
                     "Quantity": total_qty,
-                    "Amount": order_total,
+                    "Amount subtotal": amount_subtotal,
+                    "Order Earnings": order_earnings,
                     "Currency": currency_code,
                     "Status": status_badge,
                     "RawStatus": status_raw
@@ -1070,7 +1080,7 @@ elif selected_page == "📈 Sales & Revenue Reports":
 
             st.divider()
 
-            # --- STATUS SEGMENT SELECTOR (CANCELLED & REFUNDED SEPARATED) ---
+            # --- STATUS SEGMENT SELECTOR ---
             st.markdown("#### 🎯 Select Sheet Category")
             sales_segment_options = [
                 "📊 All Successful Sales (Gross)",
@@ -1082,7 +1092,7 @@ elif selected_page == "📈 Sales & Revenue Reports":
             ]
             chosen_segment = st.selectbox("View Report Sheet:", sales_segment_options, key="sales_segment_selector")
 
-            # Filter rows based on chosen segment
+            # Filter rows based on segment
             if chosen_segment == "📊 All Successful Sales (Gross)":
                 filtered_rows = [r for r in parsed_all_rows if r["RawStatus"] not in ["CANCELLED", "REFUNDED"]]
             elif chosen_segment == "🚚 Shipped Orders (In-Transit)":
@@ -1096,29 +1106,24 @@ elif selected_page == "📈 Sales & Revenue Reports":
             else:
                 filtered_rows = parsed_all_rows
 
-            # Calculate KPI Metrics for current selection
-            segment_revenue = sum(r["Amount"] for r in filtered_rows)
+            # KPI Calculations
+            segment_revenue = sum(r["Order Earnings"] for r in filtered_rows)
+            segment_subtotal = sum(r["Amount subtotal"] for r in filtered_rows)
             segment_orders_count = len(filtered_rows)
             segment_items_count = sum(r["Quantity"] for r in filtered_rows)
             segment_aov = (segment_revenue / segment_orders_count) if segment_orders_count > 0 else 0.0
 
-            # --- KPI DISPLAY ---
+            # KPI Display
             k1, k2, k3, k4 = st.columns(4)
-            if "Refunded" in chosen_segment:
-                metric_rev_label = "Total Refunded Amount"
-            elif "Cancelled" in chosen_segment:
-                metric_rev_label = "Cancelled Order Value"
-            else:
-                metric_rev_label = "Total Revenue"
-
+            metric_rev_label = "Total Refunded Earnings" if "Refunded" in chosen_segment else "Total Order Earnings"
             k1.metric(metric_rev_label, f"{currency_code} {segment_revenue:,.2f}")
             k2.metric("Total Orders", segment_orders_count)
-            k3.metric("Avg Order Value (AOV)", f"{currency_code} {segment_aov:,.2f}")
-            k4.metric("Total Units Count", segment_items_count)
+            k3.metric("Total Subtotal", f"{currency_code} {segment_subtotal:,.2f}")
+            k4.metric("Total Quantity Sold", segment_items_count)
 
             st.divider()
 
-            # --- CSV EXPORT & INTERACTIVE TABLE ---
+            # Format and Export Table
             df_display = pd.DataFrame(filtered_rows).drop(columns=["RawStatus"])
 
             c_head, c_dl = st.columns([3, 1])
