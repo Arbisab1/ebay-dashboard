@@ -1,5 +1,5 @@
 import base64
-from datetime import datetime
+from datetime import datetime, timezone
 import json
 import os
 import time
@@ -192,9 +192,9 @@ def get_template_index(tpl_dict, target_key):
     return 0
 
 
-# --- DIRECT EBAY STATUS CHECK ---
+# Accurate eBay Status Identification
 def get_clean_order_status(o):
-    # 1. Cancelled Check
+    # 1. Cancelled
     cancel_state = (
         o.get("cancelStatus", {}).get("cancelState", "").strip().upper()
     )
@@ -207,51 +207,62 @@ def get_clean_order_status(o):
     ] or len(cancel_req) > 0:
         return "CANCELLED", "❌ Cancelled"
 
-    # 2. Check Line Items Delivery Status from eBay
-    line_items = o.get("lineItems", [])
-    plans = o.get("fulfillmentStartPlans", [])
-    fulfillments = o.get("fulfillments", [])
-
-    is_delivered_ebay = False
-    has_tracking_ebay = False
-
-    # Direct line items check
-    for item in line_items:
-        del_status = (
-            item.get("deliveryInfo", {}).get("deliveryStatus", "").upper()
-        )
-        if del_status == "DELIVERED":
-            is_delivered_ebay = True
-        elif del_status in [
-            "IN_TRANSIT",
-            "OUT_FOR_DELIVERY",
-            "SHIPPED",
-            "DROPPED_OFF",
-        ]:
-            has_tracking_ebay = True
-
-    # Direct fulfillments array check
-    for f in fulfillments:
-        if f.get("shipmentTrackingNumber") or f.get("trackingNumber"):
-            has_tracking_ebay = True
-        if f.get("deliveryStatus", "").upper() == "DELIVERED":
-            is_delivered_ebay = True
-
-    # Direct fulfillmentStartPlans check
-    for plan in plans:
-        ship_step = plan.get("shippingStep", {})
-        if ship_step.get("shipmentTracking"):
-            has_tracking_ebay = True
-        if ship_step.get("actualDeliveryDate"):
-            is_delivered_ebay = True
-
-    # Order level fulfillment status check
     f_status = o.get("orderFulfillmentStatus", "NOT_STARTED")
 
-    if is_delivered_ebay:
+    # 2. Check tracking presence
+    instructions = o.get("fulfillmentStartInstructions", [])
+    has_tracking = False
+    is_delivered = False
+    now_utc = datetime.now(timezone.utc)
+
+    # Check instructions for delivery date and tracking info
+    for inst in instructions:
+        # Check estimated max delivery date
+        max_del = inst.get("maxEstimatedDeliveryDate")
+        if max_del:
+            try:
+                clean_date = max_del.replace("Z", "+00:00")
+                dt = datetime.fromisoformat(clean_date)
+                if dt.tzinfo is None:
+                    dt = dt.replace(tzinfo=timezone.utc)
+                if now_utc >= dt and f_status == "FULFILLED":
+                    is_delivered = True
+            except Exception:
+                pass
+
+        step = inst.get("shippingStep", {})
+        if step.get("shipmentTracking"):
+            has_tracking = True
+
+    # Check line items and fulfillments containers
+    for item in o.get("lineItems", []):
+        if item.get("deliveryInfo", {}).get("actualDeliveryDate"):
+            is_delivered = True
+        status_text = (
+            item.get("deliveryInfo", {}).get("deliveryStatus", "").upper()
+        )
+        if status_text == "DELIVERED":
+            is_delivered = True
+        elif status_text in [
+            "SHIPPED",
+            "IN_TRANSIT",
+            "OUT_FOR_DELIVERY",
+            "DROPPED_OFF",
+        ]:
+            has_tracking = True
+
+    # Check direct fulfillments list
+    for f in o.get("fulfillments", []) + o.get("shippingFulfillments", []):
+        if f.get("shipmentTrackingNumber") or f.get("trackingNumber"):
+            has_tracking = True
+        if f.get("deliveryStatus", "").upper() == "DELIVERED":
+            is_delivered = True
+
+    # 3. Final State Classification
+    if is_delivered:
         return "DELIVERED", "📦 Delivered"
-    elif has_tracking_ebay or f_status == "FULFILLED":
-        return "SHIPPED", "🚚 Shipped"
+    elif f_status == "FULFILLED" or has_tracking:
+        return "SHIPPED", "🚚 Shipped (In-Transit)"
     else:
         return "NEW", "🆕 New Order"
 
@@ -379,7 +390,7 @@ else:
 
                     filter_options = [
                         "🆕 Brand New Orders (Unfulfilled)",
-                        "🚚 Shipped Orders",
+                        "🚚 Shipped Orders (In-Transit)",
                         "📦 Delivered Orders",
                         "❌ Cancelled Orders",
                         "📋 All Orders",
@@ -391,7 +402,7 @@ else:
                             key=f"filter_{name}",
                         )
 
-                    # Auto Select Matching Template
+                    # Auto-select matching template
                     target_tpl_name = "Brand New Order Welcome"
                     if "Shipped" in status_filter:
                         target_tpl_name = "Shipped Notification"
@@ -412,7 +423,7 @@ else:
                             key=f"tpl_select_{name}",
                         )
 
-                    # Strict Separation Filter Logic directly mapped to eBay status
+                    # Filter Orders Logic
                     display_orders = []
                     for o in orders:
                         order_type, _ = get_clean_order_status(o)
@@ -428,7 +439,7 @@ else:
                         ):
                             if order_type == "NEW":
                                 display_orders.append(o)
-                        elif status_filter == "🚚 Shipped Orders":
+                        elif status_filter == "🚚 Shipped Orders (In-Transit)":
                             if order_type == "SHIPPED":
                                 display_orders.append(o)
                         elif status_filter == "📦 Delivered Orders":
@@ -456,31 +467,22 @@ else:
                                 else None
                             )
 
-                            # Extract tracking details
+                            # Extract tracking details safely
                             tracking_num = "Uploaded on eBay"
                             carrier_name = "Standard Courier"
-                            fulfillments = o.get("fulfillments", [])
-                            if fulfillments:
-                                tracking_num = (
-                                    fulfillments[0].get(
-                                        "shipmentTrackingNumber"
-                                    )
-                                    or tracking_num
-                                )
-                                carrier_name = (
-                                    fulfillments[0].get("shippingCarrierCode")
-                                    or carrier_name
-                                )
-                            else:
-                                plans = o.get("fulfillmentStartPlans", [])
-                                if plans:
-                                    step = plans[0].get("shippingStep", {})
-                                    tracking_num = step.get(
-                                        "shipmentTracking", {}
-                                    ).get("trackingNumber", tracking_num)
-                                    carrier_name = step.get(
-                                        "shippingCarrierCode", carrier_name
-                                    )
+
+                            for inst in o.get(
+                                "fulfillmentStartInstructions", []
+                            ):
+                                step = inst.get("shippingStep", {})
+                                track_info = step.get(
+                                    "shipmentTracking", {}
+                                ).get("trackingNumber")
+                                carrier_info = step.get("shippingCarrierCode")
+                                if track_info:
+                                    tracking_num = track_info
+                                if carrier_info:
+                                    carrier_name = carrier_info
 
                             msg_body = templates[chosen_template].format(
                                 buyer=buyer,
@@ -536,29 +538,19 @@ else:
 
                         _, clean_badge = get_clean_order_status(o)
 
-                        # Extract tracking for preview
                         tracking_num = "Uploaded on eBay"
                         carrier_name = "Courier"
-                        fulfillments = o.get("fulfillments", [])
-                        if fulfillments:
-                            tracking_num = (
-                                fulfillments[0].get("shipmentTrackingNumber")
-                                or tracking_num
+
+                        for inst in o.get("fulfillmentStartInstructions", []):
+                            step = inst.get("shippingStep", {})
+                            track_info = step.get("shipmentTracking", {}).get(
+                                "trackingNumber"
                             )
-                            carrier_name = (
-                                fulfillments[0].get("shippingCarrierCode")
-                                or carrier_name
-                            )
-                        else:
-                            plans = o.get("fulfillmentStartPlans", [])
-                            if plans:
-                                step = plans[0].get("shippingStep", {})
-                                tracking_num = step.get(
-                                    "shipmentTracking", {}
-                                ).get("trackingNumber", tracking_num)
-                                carrier_name = step.get(
-                                    "shippingCarrierCode", carrier_name
-                                )
+                            carrier_info = step.get("shippingCarrierCode")
+                            if track_info:
+                                tracking_num = track_info
+                            if carrier_info:
+                                carrier_name = carrier_info
 
                         formatted_preview = templates[chosen_template].format(
                             buyer=buyer,
