@@ -89,7 +89,7 @@ st.markdown(
         font-weight: 600 !important;
     }}
 
-    /* Buttons */
+    /* Primary & Secondary Buttons */
     button[kind="primary"] {{
         background-color: #2563EB !important;
         color: #FFFFFF !important;
@@ -285,13 +285,9 @@ def get_fresh_token(refresh_token):
         return res.json().get("access_token")
     return None
 
-# --- CACHED API CALL ---
-@st.cache_data(show_spinner=False, ttl=3600) # Cache for 1 hour, or until params change
+
+@st.cache_data(show_spinner=False, ttl=3600)
 def fetch_all_ebay_orders_cached(access_token, date_filter_str):
-    """
-    Fetches orders.date_filter_str is used as a cache key.
-    Format: "YYYY-MM-DD..YYYY-MM-DD" or "NONE"
-    """
     headers = {
         "Authorization": f"Bearer {access_token}",
         "Content-Type": "application/json",
@@ -319,8 +315,6 @@ def fetch_all_ebay_orders_cached(access_token, date_filter_str):
                 break
             offset += limit
         else:
-            # If token expired during pagination, we can't refresh here easily within cache.
-            # The main loop handles initial token refresh.
             break
     return all_orders
 
@@ -434,17 +428,20 @@ if "logged_in" not in st.session_state:
     st.session_state.role = None
     st.session_state.assigned_stores = []
 
+if "auth_mode" not in st.session_state:
+    st.session_state.auth_mode = "signin"
+
 
 # ==========================================================
-# 1. LOGIN & SELF SIGN-UP TABS
+# 1. LOGIN & SIGN UP FORM (BUTTONS AT THE BOTTOM)
 # ==========================================================
 if not st.session_state.logged_in:
-    c1, c2, c3 = st.columns([1, 1.5, 1])
+    c1, c2, c3 = st.columns([1, 1.4, 1])
     with c2:
         st.markdown(
             """
-        <div style="text-align: center; padding: 20px; background: #FFFFFF; border: 1px solid #CBD5E1; border-radius: 12px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05); margin-bottom: 16px;">
-            <img src="https://upload.wikimedia.org/wikipedia/commons/1/1b/EBay_logo.svg" width="90" style="margin-bottom: 8px;">
+        <div style="text-align: center; padding: 22px 20px 14px 20px; background: #FFFFFF; border: 1px solid #CBD5E1; border-radius: 12px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05); margin-bottom: 15px;">
+            <img src="https://upload.wikimedia.org/wikipedia/commons/1/1b/EBay_logo.svg" width="95" style="margin-bottom: 6px;">
             <h3 style="margin: 0; color: #0F172A; font-weight: 700;">eBay Automation Portal</h3>
             <p style="margin-top: 4px; color: #475569; font-size: 0.85rem;">Sign in or create an account for your store</p>
         </div>
@@ -452,20 +449,36 @@ if not st.session_state.logged_in:
             unsafe_allow_html=True,
         )
 
-        auth_tab1, auth_tab2 = st.tabs(["🔑 Sign In", "➕ Create an Account"])
+        # Single Form Card
+        with st.form("auth_main_form"):
+            uname = st.text_input("Username").strip()
+            pword = st.text_input("Password", type="password").strip()
+            
+            store_label = ""
+            if st.session_state.auth_mode == "signup":
+                store_label = st.text_input("Your eBay Store Name / Alias:").strip()
 
-        # TAB 1: SIGN IN
-        with auth_tab1:
-            with st.form("direct_login_form"):
-                uname = st.text_input("Username").strip()
-                pword = st.text_input("Password", type="password").strip()
-                
-                # Sign In Button moved inside the form below inputs
-                submit_btn = st.form_submit_button(
-                    "Sign In", use_container_width=True, type="primary"
-                )
+            st.write("")
+            
+            # Switcher between Sign In and Sign Up placed below inputs
+            mode_choice = st.radio(
+                "Action Mode:",
+                ["🔑 Sign In", "➕ Sign Up"],
+                index=0 if st.session_state.auth_mode == "signin" else 1,
+                horizontal=True,
+                label_visibility="collapsed"
+            )
 
-                if submit_btn:
+            st.write("")
+
+            # Main Action Button
+            action_btn_label = "Sign In" if "Sign In" in mode_choice else "Sign Up"
+            submit_btn = st.form_submit_button(
+                action_btn_label, use_container_width=True, type="primary"
+            )
+
+            if submit_btn:
+                if "Sign In" in mode_choice:
                     saved_admin_pass = users_db.get("admin", {}).get("password")
                     if uname.lower() == "admin" and (
                         (saved_admin_pass and saved_admin_pass == hash_pass(pword))
@@ -494,39 +507,28 @@ if not st.session_state.logged_in:
                     else:
                         st.error("Invalid Username or Password.")
 
-        # TAB 2: SELF SIGN-UP
-        with auth_tab2:
-            with st.form("signup_form"):
-                new_u = st.text_input("Choose Username:").strip()
-                new_p = st.text_input("Choose Password:", type="password").strip()
-                store_label = st.text_input("Your eBay Store Name / Alias:").strip()
-                
-                # Signup Button moved inside the form below inputs
-                signup_btn = st.form_submit_button(
-                    "Create Account & Continue", use_container_width=True, type="primary"
-                )
-
-                if signup_btn:
-                    if new_u and new_p and store_label:
-                        if new_u in users_db or new_u.lower() == "admin":
+                else:
+                    # SIGN UP LOGIC
+                    if uname and pword and store_label:
+                        if uname in users_db or uname.lower() == "admin":
                             st.error("Username already exists. Choose another.")
                         else:
-                            users_db[new_u] = {
-                                "password": hash_pass(new_p),
+                            users_db[uname] = {
+                                "password": hash_pass(pword),
                                 "role": "client",
                                 "assigned_stores": [store_label],
                             }
                             save_json(USERS_FILE, users_db)
                             
                             st.session_state.logged_in = True
-                            st.session_state.username = new_u
+                            st.session_state.username = uname
                             st.session_state.role = "client"
                             st.session_state.assigned_stores = [store_label]
                             st.success("Account created successfully! Redirecting...")
                             time.sleep(1)
                             st.rerun()
                     else:
-                        st.warning("All fields are required.")
+                        st.warning("Please fill all fields to Sign Up (Username, Password & Store Name).")
 
     st.stop()
 
@@ -666,7 +668,6 @@ if "Orders &" in selected_page:
         st.divider()
         st.markdown("#### 🔄 Sync Orders from eBay")
         
-        # --- DATE FILTER / ALL ORDERS SWITCH ---
         fetch_all_orders_toggle = st.checkbox("📋 Fetch ALL Orders (No Date Limit)", value=False, key="all_orders_toggle")
         
         col_date1, col_date2, col_sync_btn = st.columns([2, 2, 1.5])
@@ -679,21 +680,17 @@ if "Orders &" in selected_page:
             default_end = datetime.now().date()
             end_date = st.date_input("To Date:", value=default_end, disabled=fetch_all_orders_toggle, key="end_date_input")
 
-        # --- AUTO-TRIGGER SYNC ON FILTER CHANGE ---
-        # Generate cache key based on current filters
         date_filter_key = "NONE"
         if not fetch_all_orders_toggle:
             if start_date > end_date:
                 st.error("'From Date' cannot be after 'To Date'.")
-                orders = [] # Clear orders on error
+                orders = []
                 st.session_state[f"orders_{active_store_name}"] = []
             else:
                 date_filter_key = f"{start_date}T00:00:00.000Z..{end_date}T23:59:59.999Z"
 
-        # Initialize orders variable
         orders = st.session_state.get(f"orders_{active_store_name}", [])
 
-        # Button column (Manual sync remains an option)
         with col_sync_btn:
             st.write("")
             manual_sync = st.button(
@@ -703,17 +700,13 @@ if "Orders &" in selected_page:
                 key="manual_sync_btn"
             )
 
-        # TRIGGER FETCH: If filters changed or manual refresh requested
         current_filter_hash = hash((active_store_name, date_filter_key))
         last_filter_hash = st.session_state.get(f"last_hash_{active_store_name}")
 
         if manual_sync or current_filter_hash != last_filter_hash:
-            # Prevent fetch if date error exists
             if not (not fetch_all_orders_toggle and start_date > end_date):
                 with st.spinner(f"Syncing orders for {active_store_name}..."):
-                    # Check token validity before cached call (main loop level logic)
                     access_token = tokens["access_token"]
-                    # Simplified validity check (can be improved based on actual response)
                     test_headers = {"Authorization": f"Bearer {access_token}"}
                     test_res = requests.get("https://api.ebay.com/sell/fulfillment/v1/order?limit=1", headers=test_headers)
                     
@@ -724,22 +717,19 @@ if "Orders &" in selected_page:
                             save_json(STORES_FILE, stores)
                             access_token = new_t
 
-                    # Clear cache if manual refresh
                     if manual_sync:
                         st.cache_data.clear()
 
-                    # Perform cached fetch
                     try:
                         fetched_orders = fetch_all_ebay_orders_cached(access_token, date_filter_key)
                         st.session_state[f"orders_{active_store_name}"] = fetched_orders
                         st.session_state[f"last_hash_{active_store_name}"] = current_filter_hash
-                        orders = fetched_orders # Update local variable
+                        orders = fetched_orders
                         st.success(f"Synced {len(fetched_orders)} orders!")
                     except Exception as e:
                         st.error(f"Failed to fetch orders: {str(e)}")
                         orders = []
 
-        # --- DISPLAY & FILTERING ---
         if orders:
             st.divider()
             col_filter, col_template = st.columns([2, 2])
@@ -772,7 +762,6 @@ if "Orders &" in selected_page:
                     key="template_filter_select"
                 )
 
-            # Local Filtering based on Status
             display_orders = []
             for o in orders:
                 order_type, _ = get_clean_order_status(o)
@@ -799,7 +788,6 @@ if "Orders &" in selected_page:
 
             st.write("")
 
-            # Bulk Actions
             if st.button(
                 f"🚀 Send '{chosen_template}' to All ({len(display_orders)}) Matched Orders",
                 type="primary",
@@ -854,11 +842,10 @@ if "Orders &" in selected_page:
                                         "%Y-%m-%d %H:%M:%S"
                                     ),
                                 }
-                    except Exception as e:
-                        # Handle formatting errors if template variables don't match
+                    except Exception:
                         pass
 
-                    time.sleep(0.3) # Rate limit protection
+                    time.sleep(0.3)
                     progress_bar.progress((i + 1) / len(display_orders))
 
                 save_json(LOGS_FILE, logs)
@@ -866,12 +853,11 @@ if "Orders &" in selected_page:
                     f"✅ {sent_count}/{len(display_orders)} messages dispatched!"
                 )
                 time.sleep(1)
-                st.rerun() # Refresh log status
+                st.rerun()
 
             st.divider()
             st.markdown("### 📋 Order List & Direct Actions")
 
-            # Individual Order Cards
             for o in display_orders:
                 order_id = o.get("orderId", "")
                 buyer = o.get("buyer", {}).get("username", "Buyer")
@@ -901,7 +887,6 @@ if "Orders &" in selected_page:
                     if carrier_info:
                         carrier_name = carrier_info
 
-                # Preview Logic (wrapped in try/except for dynamic variables)
                 try:
                     formatted_preview = templates[chosen_template].format(
                         buyer=buyer,
@@ -909,13 +894,12 @@ if "Orders &" in selected_page:
                         tracking_number=tracking_num,
                         carrier=carrier_name,
                     )
-                except:
-                    formatted_preview = templates[chosen_template] # Fallback if formatting fails
+                except Exception:
+                    formatted_preview = templates[chosen_template]
 
                 log_key = f"{order_id}_{chosen_template}"
                 is_sent = log_key in logs
 
-                # Expander Card
                 with st.expander(
                     f"Order #{order_id} | Buyer: {buyer} | {clean_badge} | {'✅ Sent' if is_sent else '⏳ Ready'}"
                 ):
@@ -1015,12 +999,12 @@ elif (
                         save_json(USERS_FILE, users_db)
                         st.session_state.assigned_stores = [store_alias]
                     
-                    st.cache_data.clear() # Clear order cache on new store connection
+                    st.cache_data.clear()
                     st.success(f"Store '{store_alias}' linked successfully!")
                     time.sleep(1)
                     st.rerun()
                 else:
-                    st.error(f"Authentication failed. eBay returned: {token_data.get('error_description', 'Unknown error')}")
+                    st.error("Authentication failed. Please verify code/URL.")
             else:
                 st.warning("All fields are required.")
 
@@ -1047,7 +1031,7 @@ elif (
                     ):
                         del stores[s_name]
                         save_json(STORES_FILE, stores)
-                        st.cache_data.clear() # Clear cache on disconnect
+                        st.cache_data.clear()
                         st.success(f"Store '{s_name}' removed!")
                         time.sleep(1)
                         st.rerun()
