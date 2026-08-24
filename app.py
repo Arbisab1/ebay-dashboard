@@ -469,6 +469,28 @@ with st.sidebar:
         st.rerun()
 
     st.divider()
+
+    # --- QUICK PASSWORD CHANGE IN SIDEBAR ---
+    with st.expander("🔑 Change My Password"):
+        curr_pass = st.text_input("Current Password:", type="password", key="side_cur_pass")
+        new_pass = st.text_input("New Password:", type="password", key="side_new_pass")
+        conf_pass = st.text_input("Confirm New Password:", type="password", key="side_conf_pass")
+        
+        if st.button("Update Password", key="side_btn_up_pass", type="primary"):
+            user_key = st.session_state.username
+            if users_db[user_key]["password"] == hash_pass(curr_pass):
+                if new_pass == conf_pass and len(new_pass) > 0:
+                    users_db[user_key]["password"] = hash_pass(new_pass)
+                    save_json(USERS_FILE, users_db)
+                    st.success("Password successfully changed!")
+                    time.sleep(1)
+                    st.rerun()
+                else:
+                    st.error("New passwords do not match.")
+            else:
+                st.error("Current password incorrect.")
+
+    st.divider()
     st.markdown("##### Navigation")
 
     nav_options = [
@@ -836,15 +858,15 @@ elif selected_page == "📝 Template Settings":
 
 
 # ==========================================================
-# PAGE 4: USER ACCESS CONTROL (ADMIN ONLY)
+# PAGE 4: USER ACCESS CONTROL & ADMIN PASSWORD MANAGEMENT
 # ==========================================================
 elif (
     selected_page == "👥 User Access Control"
     and st.session_state.role == "admin"
 ):
-    st.markdown("## 👥 User Access Control")
+    st.markdown("## 👥 User Access & Security Control")
     st.caption(
-        "Create dedicated client accounts and assign store access permissions."
+        "Create client accounts, assign store permissions, and reset user/admin passwords."
     )
 
     c_u1, c_u2 = st.columns([1.2, 1])
@@ -880,6 +902,25 @@ elif (
                     st.rerun()
             else:
                 st.warning("All fields are required.")
+
+        st.divider()
+        st.markdown("### 🔒 Change Admin Password")
+        with st.form("admin_pass_reset_form"):
+            admin_curr_p = st.text_input("Current Admin Password:", type="password")
+            admin_new_p = st.text_input("New Admin Password:", type="password")
+            admin_conf_p = st.text_input("Confirm New Admin Password:", type="password")
+            admin_pass_btn = st.form_submit_button("Save New Admin Password", type="primary")
+
+            if admin_pass_btn:
+                if users_db["admin"]["password"] == hash_pass(admin_curr_p):
+                    if admin_new_p == admin_conf_p and len(admin_new_p) > 0:
+                        users_db["admin"]["password"] = hash_pass(admin_new_p)
+                        save_json(USERS_FILE, users_db)
+                        st.success("Admin password updated successfully!")
+                    else:
+                        st.error("New passwords do not match.")
+                else:
+                    st.error("Current admin password is incorrect.")
 
     with c_u2:
         st.markdown("### 📋 Active Users")
