@@ -957,19 +957,19 @@ if "Orders &" in selected_page:
 
 
 # ==========================================================
-# PAGE B: SALES & REVENUE REPORTS (ACTUAL SELLER EARNINGS MAPPING)
+# PAGE B: SALES & REVENUE REPORTS (EXACT NET EARNINGS MAPPING)
 # ==========================================================
 elif selected_page == "📈 Sales & Revenue Reports":
     st.markdown(
         """
     <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 8px;">
         <img src="https://upload.wikimedia.org/wikipedia/commons/1/1b/EBay_logo.svg" width="75">
-        <h2 style="margin: 0; color: #0F172A; font-weight: 700;">Sales, Earnings & Refund Reports</h2>
+        <h2 style="margin: 0; color: #0F172A; font-weight: 700;">Sales, Net Earnings & Refund Reports</h2>
     </div>
     """,
         unsafe_allow_html=True,
     )
-    st.caption("Accurate Order Earnings (Net Payout after eBay marketplace fees and refunds deducted).")
+    st.caption("Exact Order Earnings (Buyer Total minus eBay Selling Fees and Payment Refunds).")
 
     if not accessible_stores:
         st.info("👋 Welcome! Your store is not connected yet.")
@@ -1008,7 +1008,7 @@ elif selected_page == "📈 Sales & Revenue Reports":
 
         if refresh_sales_btn or sales_hash != last_sales_hash:
             if not (not fetch_all_sales_toggle and sales_start_date > sales_end_date):
-                with st.spinner("Calculating actual seller earnings and refunds..."):
+                with st.spinner("Calculating actual order earnings and fees..."):
                     access_token = tokens["access_token"]
                     test_headers = {"Authorization": f"Bearer {access_token}"}
                     test_res = requests.get("https://api.ebay.com/sell/fulfillment/v1/order?limit=1", headers=test_headers)
@@ -1046,17 +1046,17 @@ elif selected_page == "📈 Sales & Revenue Reports":
                 gross_order_total = float(total_obj.get("value", 0.0))
                 currency_code = total_obj.get("currency", currency_code)
                 
-                # Amount Subtotal (Price before tax/fees)
+                # Subtotal
                 subtotal_obj = pricing.get("priceSubtotal", {})
                 if not subtotal_obj:
                     subtotal_obj = pricing.get("subtotal", {})
                 amount_subtotal = float(subtotal_obj.get("value", gross_order_total))
 
-                # Marketplace Fees & Actual Net Earnings Calculation
+                # Exact Net Earnings (Order Details Payout Logic)
                 payment_summary = o.get("paymentSummary", {})
                 total_due_seller_obj = payment_summary.get("totalDueSeller", {})
                 
-                # Check Refunds
+                # Sum refunds for this order
                 refunds_list = payment_summary.get("refunds", [])
                 refund_amount = 0.0
                 for r in refunds_list:
@@ -1065,16 +1065,15 @@ elif selected_page == "📈 Sales & Revenue Reports":
                     except Exception:
                         pass
 
-                # Fee Deductions
+                # Sum marketplace selling fees
                 total_fee_obj = o.get("totalMarketplaceFee", {})
                 fee_val = float(total_fee_obj.get("value", 0.0))
 
+                # Exact Payout received by seller
                 if total_due_seller_obj and "value" in total_due_seller_obj:
-                    # Direct Net Due from eBay
                     order_earnings = float(total_due_seller_obj.get("value", 0.0))
                 else:
-                    # Calculated: Gross - Fees - Refunds
-                    order_earnings = max(0.0, gross_order_total - fee_val - refund_amount)
+                    order_earnings = round(max(0.0, gross_order_total - fee_val - refund_amount), 2)
 
                 status_raw, status_badge = get_clean_order_status(o)
 
@@ -1106,7 +1105,7 @@ elif selected_page == "📈 Sales & Revenue Reports":
             # --- STATUS SEGMENT SELECTOR ---
             st.markdown("#### 🎯 Select Sheet Category")
             sales_segment_options = [
-                "📊 All Successful Sales (Gross Earnings)",
+                "📊 All Successful Sales (Net Earnings)",
                 "🚚 Shipped Orders (In-Transit)",
                 "📦 Delivered Orders (Completed)",
                 "❌ Cancelled Orders (Unfulfilled)",
@@ -1116,7 +1115,7 @@ elif selected_page == "📈 Sales & Revenue Reports":
             chosen_segment = st.selectbox("View Report Sheet:", sales_segment_options, key="sales_segment_selector")
 
             # Filter rows based on segment
-            if chosen_segment == "📊 All Successful Sales (Gross Earnings)":
+            if chosen_segment == "📊 All Successful Sales (Net Earnings)":
                 filtered_rows = [r for r in parsed_all_rows if r["RawStatus"] not in ["CANCELLED", "REFUNDED"]]
             elif chosen_segment == "🚚 Shipped Orders (In-Transit)":
                 filtered_rows = [r for r in parsed_all_rows if r["RawStatus"] == "SHIPPED"]
@@ -1142,7 +1141,7 @@ elif selected_page == "📈 Sales & Revenue Reports":
 
             # KPI Display
             k1, k2, k3, k4 = st.columns(4)
-            metric_rev_label = "Total Refund Return Amount" if "Refunded" in chosen_segment else "Total Net Order Earnings"
+            metric_rev_label = "Total Refunded Amount" if "Refunded" in chosen_segment else "Total Net Order Earnings"
             k1.metric(metric_rev_label, f"{currency_code} {segment_revenue:,.2f}")
             k2.metric("Total Orders", segment_orders_count)
             k3.metric("Total Subtotal", f"{currency_code} {segment_subtotal:,.2f}")
@@ -1150,7 +1149,7 @@ elif selected_page == "📈 Sales & Revenue Reports":
 
             st.divider()
 
-            # Format and Export Table
+            # Format and Export Table with all requested columns
             df_display = pd.DataFrame(filtered_rows).drop(columns=["RawStatus", "RefundAmount"])
 
             c_head, c_dl = st.columns([3, 1])
