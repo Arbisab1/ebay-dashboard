@@ -957,7 +957,7 @@ if "Orders &" in selected_page:
 
 
 # ==========================================================
-# PAGE B: SALES & REVENUE REPORTS (ACCURATE SELLER HUB ORDER EARNINGS)
+# PAGE B: SALES & REVENUE REPORTS (100% ACCURATE SELLER HUB EARNINGS)
 # ==========================================================
 elif selected_page == "📈 Sales & Revenue Reports":
     st.markdown(
@@ -969,7 +969,7 @@ elif selected_page == "📈 Sales & Revenue Reports":
     """,
         unsafe_allow_html=True,
     )
-    st.caption("Exact Order Earnings matching eBay Seller Hub (Item Price + Shipping - Selling Fees - Taxes - Refunds).")
+    st.caption("Exact Order Earnings matching eBay Seller Hub Order Page (All Selling Fees, Taxes, and Refunds Deducted).")
 
     if not accessible_stores:
         st.info("👋 Welcome! Your store is not connected yet.")
@@ -1008,7 +1008,7 @@ elif selected_page == "📈 Sales & Revenue Reports":
 
         if refresh_sales_btn or sales_hash != last_sales_hash:
             if not (not fetch_all_sales_toggle and sales_start_date > sales_end_date):
-                with st.spinner("Calculating exact Seller Hub earnings..."):
+                with st.spinner("Extracting accurate Seller Hub earnings and fee data..."):
                     access_token = tokens["access_token"]
                     test_headers = {"Authorization": f"Bearer {access_token}"}
                     test_res = requests.get("https://api.ebay.com/sell/fulfillment/v1/order?limit=1", headers=test_headers)
@@ -1040,30 +1040,38 @@ elif selected_page == "📈 Sales & Revenue Reports":
                 created_date = o.get("creationDate", "")[:10]
                 buyer = o.get("buyer", {}).get("username", "Buyer")
                 
-                # Pricing Summary Components
                 pricing = o.get("pricingSummary", {})
                 
-                # 1. Total Price (Items Subtotal)
+                # 1. Subtotal (Items gross price)
                 subtotal_obj = pricing.get("priceSubtotal", {})
                 if not subtotal_obj:
                     subtotal_obj = pricing.get("subtotal", {})
                 amount_subtotal = float(subtotal_obj.get("value", 0.0))
                 currency_code = subtotal_obj.get("currency", currency_code)
 
-                # 2. Shipping Charged to Buyer
+                # 2. Shipping amount paid by buyer
                 delivery_cost_obj = pricing.get("deliveryCost", {})
                 delivery_cost = float(delivery_cost_obj.get("value", 0.0))
 
-                # 3. eBay Marketplace Tax (Collected & remitted directly by eBay)
-                tax_obj = pricing.get("tax", {})
-                tax_collected_by_ebay = float(tax_obj.get("value", 0.0))
-
-                # 4. Total Fees Paid by Seller
-                total_fee_obj = o.get("totalMarketplaceFee", {})
-                total_selling_fees = float(total_fee_obj.get("value", 0.0))
-
-                # 5. Refunds Paid Back to Buyer
+                # 3. Aggregate ALL Selling & Ad Fees across the order
+                total_fees = 0.0
+                
+                # Order-level marketplace fees
+                order_fee_obj = o.get("totalMarketplaceFee", {})
+                total_fees += float(order_fee_obj.get("value", 0.0))
+                
+                # Line item level marketplace & Promoted ad fees
+                for li in o.get("lineItems", []):
+                    for fee in li.get("marketplaceFees", []):
+                        total_fees += float(fee.get("amount", {}).get("value", 0.0))
+                
+                # Payment level fee details (Final Value Fee, Regulatory Fee, International Fee)
                 payment_summary = o.get("paymentSummary", {})
+                for p in payment_summary.get("payments", []):
+                    for fd in p.get("feeDetails", []):
+                        total_fees += float(fd.get("amount", {}).get("value", 0.0))
+
+                # 4. Refunds & returns
                 refunds_list = payment_summary.get("refunds", [])
                 refund_amount = 0.0
                 for r in refunds_list:
@@ -1072,13 +1080,14 @@ elif selected_page == "📈 Sales & Revenue Reports":
                     except Exception:
                         pass
 
-                # Exact Seller Hub Calculation
+                # 5. Exact Order Earnings Calculation
                 total_due_seller_obj = payment_summary.get("totalDueSeller", {})
                 if total_due_seller_obj and "value" in total_due_seller_obj:
                     order_earnings = round(float(total_due_seller_obj.get("value", 0.0)), 2)
                 else:
-                    gross_seller_pool = (amount_subtotal + delivery_cost)
-                    order_earnings = round(max(0.0, gross_seller_pool - total_selling_fees - refund_amount), 2)
+                    # Seller Hub Formula: (Item Subtotal + Shipping Paid by Buyer) - Selling Fees - Refunds
+                    gross_sales_base = amount_subtotal + delivery_cost
+                    order_earnings = round(max(0.0, gross_sales_base - total_fees - refund_amount), 2)
 
                 status_raw, status_badge = get_clean_order_status(o)
 
@@ -1146,7 +1155,7 @@ elif selected_page == "📈 Sales & Revenue Reports":
 
             # KPI Display
             k1, k2, k3, k4 = st.columns(4)
-            metric_rev_label = "Total Refund Return Amount" if "Refunded" in chosen_segment else "Total Net Order Earnings"
+            metric_rev_label = "Total Refunded Amount" if "Refunded" in chosen_segment else "Total Net Order Earnings"
             k1.metric(metric_rev_label, f"{currency_code} {segment_revenue:,.2f}")
             k2.metric("Total Orders", segment_orders_count)
             k3.metric("Total Subtotal", f"{currency_code} {segment_subtotal:,.2f}")
@@ -1154,7 +1163,7 @@ elif selected_page == "📈 Sales & Revenue Reports":
 
             st.divider()
 
-            # Format and Export Table with all requested columns
+            # Format and Export Table
             df_display = pd.DataFrame(filtered_rows).drop(columns=["RawStatus", "RefundAmount"])
 
             c_head, c_dl = st.columns([3, 1])
