@@ -1,5 +1,5 @@
 import base64
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 import hashlib
 import json
 import os
@@ -48,7 +48,6 @@ st.set_page_config(
 st.markdown(
     f"""
 <style>
-    /* Browser Dark Mode Override */
     :root {{
         color-scheme: light !important;
     }}
@@ -57,7 +56,6 @@ st.markdown(
         display: none !important;
     }}
 
-    /* Global Text & App Styling */
     html, body, .stApp {{
         background-color: #F8FAFC !important;
         color: #0F172A !important;
@@ -288,7 +286,7 @@ def get_fresh_token(refresh_token):
     return None
 
 
-def fetch_all_ebay_orders(access_token):
+def fetch_all_ebay_orders(access_token, date_filter=None):
     headers = {
         "Authorization": f"Bearer {access_token}",
         "Content-Type": "application/json",
@@ -297,8 +295,13 @@ def fetch_all_ebay_orders(access_token):
     limit = 50
     offset = 0
 
+    base_url = "https://api.ebay.com/sell/fulfillment/v1/order"
+
     while True:
-        url = f"https://api.ebay.com/sell/fulfillment/v1/order?limit={limit}&offset={offset}"
+        url = f"{base_url}?limit={limit}&offset={offset}"
+        if date_filter:
+            url += f"&filter=creationdate:[{date_filter[0]}..{date_filter[1]}]"
+
         res = requests.get(url, headers=headers)
         if res.status_code == 200:
             data = res.json()
@@ -649,24 +652,46 @@ if "Orders &" in selected_page:
         )
         tokens = accessible_stores[active_store_name]
 
-        c_sync, _ = st.columns([1.5, 3])
-        with c_sync:
+        st.divider()
+        st.markdown("#### 📅 Select Order Date Range & Sync")
+        
+        # --- DATE RANGE SELECTION ---
+        col_date1, col_date2, col_sync_btn = st.columns([2, 2, 1.5])
+        
+        with col_date1:
+            default_start = (datetime.now() - timedelta(days=30)).date()
+            start_date = st.date_input("From Date:", value=default_start)
+            
+        with col_date2:
+            default_end = datetime.now().date()
+            end_date = st.date_input("To Date:", value=default_end)
+
+        with col_sync_btn:
+            st.write("")
             if st.button(
-                f"🔄 Sync Orders ({active_store_name})",
+                f"🔄 Sync Orders",
                 type="primary",
                 use_container_width=True,
             ):
-                with st.spinner("Fetching orders from eBay API..."):
-                    all_orders = fetch_all_ebay_orders(tokens["access_token"])
-                    if not all_orders and tokens.get("refresh_token"):
-                        new_t = get_fresh_token(tokens["refresh_token"])
-                        if new_t:
-                            stores[active_store_name]["access_token"] = new_t
-                            save_json(STORES_FILE, stores)
-                            all_orders = fetch_all_ebay_orders(new_t)
+                if start_date > end_date:
+                    st.error("'From Date' cannot be after 'To Date'.")
+                else:
+                    with st.spinner("Fetching orders from eBay API..."):
+                        ebay_start = f"{start_date}T00:00:00.000Z"
+                        ebay_end = f"{end_date}T23:59:59.999Z"
+                        date_tuple = (ebay_start, ebay_end)
+                        
+                        all_orders = fetch_all_ebay_orders(tokens["access_token"], date_filter=date_tuple)
+                        
+                        if not all_orders and tokens.get("refresh_token"):
+                            new_t = get_fresh_token(tokens["refresh_token"])
+                            if new_t:
+                                stores[active_store_name]["access_token"] = new_t
+                                save_json(STORES_FILE, stores)
+                                all_orders = fetch_all_ebay_orders(new_t, date_filter=date_tuple)
 
-                    st.session_state[f"orders_{active_store_name}"] = all_orders
-                    st.success(f"Synced {len(all_orders)} orders successfully!")
+                        st.session_state[f"orders_{active_store_name}"] = all_orders
+                        st.success(f"Synced {len(all_orders)} orders successfully for selected range!")
 
         orders = st.session_state.get(f"orders_{active_store_name}", [])
 
