@@ -32,7 +32,7 @@ AUTH_URL = (
 )
 
 st.set_page_config(
-    page_title="eBay Multi-Store Manager & Bot",
+    page_title="eBay Multi-Store Manager & Smart Bot",
     layout="wide",
     page_icon="⚡",
 )
@@ -40,7 +40,7 @@ st.set_page_config(
 DEFAULT_TEMPLATES = {
     "Brand New Order Welcome": (
         "Hi {buyer},\n\n"
-        "Thank you so much for your new order #{order_id}! "
+        "Thank you so much for your order #{order_id}! "
         "We have received your payment and our team is preparing your item for dispatch.\n\n"
         "Best regards,\nCustomer Care Team"
     ),
@@ -52,8 +52,8 @@ DEFAULT_TEMPLATES = {
     ),
     "Delivered Feedback": (
         "Hi {buyer},\n\n"
-        "Your Order #{order_id} has been marked as delivered! "
-        "If you are happy with your purchase, please leave us positive feedback.\n\n"
+        "Your Order #{order_id} has been delivered! "
+        "We hope you love your item. If you have a moment, please consider leaving us a 5-star positive review on eBay.\n\n"
         "Best regards!"
     ),
     "Order Cancellation Notice": (
@@ -71,7 +71,6 @@ def load_json(filepath, default):
             with open(filepath, "r") as f:
                 data = json.load(f)
                 if isinstance(default, dict):
-                    # Ensure all default keys exist
                     for k, v in default.items():
                         if k not in data:
                             data[k] = v
@@ -186,12 +185,39 @@ def send_ebay_message(access_token, item_id, buyer_username, body_text):
     return "<Ack>Success</Ack>" in res.text or "<Ack>Warning</Ack>" in res.text
 
 
-# Safe index finder
 def get_template_index(tpl_dict, target_key):
     keys = list(tpl_dict.keys())
     if target_key in keys:
         return keys.index(target_key)
     return 0
+
+
+# Clean status parser
+def get_clean_order_status(o):
+    cancel_state = (
+        o.get("cancelStatus", {}).get("cancelState", "").strip().upper()
+    )
+    cancel_req = o.get("cancelStatus", {}).get("cancelRequests", [])
+    if cancel_state in [
+        "CANCELED",
+        "CANCELLED",
+        "CANCEL_REQUESTED",
+        "IN_PROGRESS",
+    ] or len(cancel_req) > 0:
+        return "CANCELLED", "❌ Cancelled"
+
+    f_status = o.get("orderFulfillmentStatus", "NOT_STARTED")
+    plans = o.get("fulfillmentStartPlans", [])
+    has_tracking = any(
+        p.get("shippingStep", {}).get("shipmentTracking") for p in plans
+    )
+
+    if f_status == "FULFILLED":
+        return "DELIVERED", "📦 Delivered / Fulfilled"
+    elif has_tracking:
+        return "SHIPPED", "🚚 Shipped"
+    else:
+        return "NEW", "🆕 New Order"
 
 
 # --- DASHBOARD HEADER ---
@@ -316,10 +342,10 @@ else:
                     col_filter, col_template = st.columns([2, 2])
 
                     filter_options = [
-                        "🆕 Brand New Orders (Unfulfilled / Fresh)",
-                        "🚚 Shipped (Dispatched / With Tracking)",
-                        "📦 Delivered Orders",
-                        "❌ Cancelled Orders (Cancel In-Progress / Cancelled)",
+                        "🆕 Brand New Orders (Unfulfilled)",
+                        "🚚 Shipped Orders (With Tracking)",
+                        "📦 Delivered / Completed Orders",
+                        "❌ Cancelled Orders",
                         "📋 All Orders",
                     ]
                     with col_filter:
@@ -329,7 +355,7 @@ else:
                             key=f"filter_{name}",
                         )
 
-                    # Safe Auto-Select
+                    # Auto Select Template
                     target_tpl_name = "Brand New Order Welcome"
                     if "Shipped" in status_filter:
                         target_tpl_name = "Shipped Notification"
@@ -350,60 +376,32 @@ else:
                             key=f"tpl_select_{name}",
                         )
 
+                    # Filter Orders Logic using clean helper
                     display_orders = []
                     for o in orders:
-                        f_status = o.get(
-                            "orderFulfillmentStatus", "NOT_STARTED"
-                        )
-                        cancel_status = (
-                            o.get("cancelStatus", {})
-                            .get("cancelState", "")
-                            .upper()
-                        )
-                        cancel_req = (
-                            o.get("cancelStatus", {})
-                            .get("cancelRequests", [])
-                        )
-                        is_cancelled = (
-                            cancel_status
-                            in ["CANCELED", "CANCEL_REQUESTED", "IN_PROGRESS"]
-                            or len(cancel_req) > 0
-                        )
-
-                        plans = o.get("fulfillmentStartPlans", [])
-                        has_tracking = any(
-                            p.get("shippingStep", {}).get("shipmentTracking")
-                            for p in plans
-                        )
+                        order_type, _ = get_clean_order_status(o)
 
                         if status_filter == "📋 All Orders":
                             display_orders.append(o)
-                        elif (
-                            status_filter
-                            == "❌ Cancelled Orders (Cancel In-Progress / Cancelled)"
-                        ):
-                            if is_cancelled:
+                        elif status_filter == "❌ Cancelled Orders":
+                            if order_type == "CANCELLED":
                                 display_orders.append(o)
                         elif (
                             status_filter
-                            == "🆕 Brand New Orders (Unfulfilled / Fresh)"
+                            == "🆕 Brand New Orders (Unfulfilled)"
                         ):
-                            if (
-                                not is_cancelled
-                                and f_status in ["NOT_STARTED", "IN_PROGRESS"]
-                                and not has_tracking
-                            ):
+                            if order_type == "NEW":
+                                display_orders.append(o)
+                        elif (
+                            status_filter == "🚚 Shipped Orders (With Tracking)"
+                        ):
+                            if order_type in ["SHIPPED", "DELIVERED"]:
                                 display_orders.append(o)
                         elif (
                             status_filter
-                            == "🚚 Shipped (Dispatched / With Tracking)"
+                            == "📦 Delivered / Completed Orders"
                         ):
-                            if not is_cancelled and (
-                                f_status == "FULFILLED" or has_tracking
-                            ):
-                                display_orders.append(o)
-                        elif status_filter == "📦 Delivered Orders":
-                            if not is_cancelled and f_status == "FULFILLED":
+                            if order_type == "DELIVERED":
                                 display_orders.append(o)
 
                     st.info(
@@ -492,10 +490,8 @@ else:
                             if line_items
                             else "N/A"
                         )
-                        f_stat = o.get("orderFulfillmentStatus", "NOT_STARTED")
-                        c_stat = o.get("cancelStatus", {}).get(
-                            "cancelState", "NONE"
-                        )
+
+                        _, clean_badge = get_clean_order_status(o)
 
                         tracking_num = "Uploaded on eBay"
                         carrier_name = "Courier"
@@ -521,14 +517,9 @@ else:
                         log_key = f"{order_id}_{chosen_template}"
                         is_sent = log_key in logs
 
-                        badge_status = (
-                            f"❌ Cancelled ({c_stat})"
-                            if c_stat != "NONE"
-                            else f"Status: {f_stat}"
-                        )
-
+                        # Clean Card Header without raw 'NONE' or ugly strings
                         with st.expander(
-                            f"Order #{order_id} | {buyer} | {badge_status} | {'✅ Sent' if is_sent else '⏳ Ready'}"
+                            f"Order #{order_id} | Buyer: {buyer} | {clean_badge} | {'✅ Sent' if is_sent else '⏳ Ready'}"
                         ):
                             st.write(f"**Item:** {item_title}")
                             st.write(f"**Item ID:** `{item_id}`")
