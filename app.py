@@ -1,5 +1,6 @@
 import base64
 from datetime import datetime, timezone
+import hashlib
 import json
 import os
 import time
@@ -22,6 +23,7 @@ RUNAME = st.secrets.get(
 )
 
 STORES_FILE = "connected_stores.json"
+USERS_FILE = "users_db.json"
 TEMPLATES_FILE = "custom_templates.json"
 LOGS_FILE = "message_logs.json"
 
@@ -32,9 +34,9 @@ AUTH_URL = (
 )
 
 st.set_page_config(
-    page_title="eBay Multi-Store Manager & Smart Bot",
+    page_title="eBay Multi-Account Portal",
     layout="wide",
-    page_icon="⚡",
+    page_icon="🔐",
 )
 
 DEFAULT_TEMPLATES = {
@@ -65,6 +67,11 @@ DEFAULT_TEMPLATES = {
 }
 
 
+# --- PERSISTENCE HELPERS ---
+def hash_pass(password):
+    return hashlib.sha256(password.encode()).hexdigest()
+
+
 def load_json(filepath, default):
     if os.path.exists(filepath):
         try:
@@ -85,6 +92,17 @@ def save_json(filepath, data):
         json.dump(data, f, indent=4)
 
 
+# Default admin creation
+DEFAULT_USERS = {
+    "admin": {
+        "password": hash_pass("admin123"),
+        "role": "admin",
+        "assigned_stores": ["ALL"],
+    }
+}
+
+
+# --- AUTH & API HELPERS ---
 def clean_auth_code(input_str):
     raw = input_str.strip()
     if "code=" in raw:
@@ -192,9 +210,7 @@ def get_template_index(tpl_dict, target_key):
     return 0
 
 
-# Accurate eBay Status Identification
 def get_clean_order_status(o):
-    # 1. Cancelled
     cancel_state = (
         o.get("cancelStatus", {}).get("cancelState", "").strip().upper()
     )
@@ -208,16 +224,12 @@ def get_clean_order_status(o):
         return "CANCELLED", "❌ Cancelled"
 
     f_status = o.get("orderFulfillmentStatus", "NOT_STARTED")
-
-    # 2. Check tracking presence
     instructions = o.get("fulfillmentStartInstructions", [])
     has_tracking = False
     is_delivered = False
     now_utc = datetime.now(timezone.utc)
 
-    # Check instructions for delivery date and tracking info
     for inst in instructions:
-        # Check estimated max delivery date
         max_del = inst.get("maxEstimatedDeliveryDate")
         if max_del:
             try:
@@ -234,7 +246,6 @@ def get_clean_order_status(o):
         if step.get("shipmentTracking"):
             has_tracking = True
 
-    # Check line items and fulfillments containers
     for item in o.get("lineItems", []):
         if item.get("deliveryInfo", {}).get("actualDeliveryDate"):
             is_delivered = True
@@ -251,14 +262,12 @@ def get_clean_order_status(o):
         ]:
             has_tracking = True
 
-    # Check direct fulfillments list
     for f in o.get("fulfillments", []) + o.get("shippingFulfillments", []):
         if f.get("shipmentTrackingNumber") or f.get("trackingNumber"):
             has_tracking = True
         if f.get("deliveryStatus", "").upper() == "DELIVERED":
             is_delivered = True
 
-    # 3. Final State Classification
     if is_delivered:
         return "DELIVERED", "📦 Delivered"
     elif f_status == "FULFILLED" or has_tracking:
@@ -267,100 +276,220 @@ def get_clean_order_status(o):
         return "NEW", "🆕 New Order"
 
 
-# --- DASHBOARD HEADER ---
-st.title("⚡ eBay Multi-Store Manager & Smart Bot")
-
-# --- SIDEBAR ---
+# --- INITIALIZE DATABASE ---
 stores = load_json(STORES_FILE, {})
-
-with st.sidebar:
-    st.header("➕ Link eBay Account")
-    st.markdown(f"[🔗 **Link eBay Store**]({AUTH_URL})")
-    st.caption("Authorization URL paste karein:")
-    redirect_input = st.text_input("Redirected URL / Code:")
-    store_alias = st.text_input("Store Name:")
-
-    if st.button("Save Store"):
-        if redirect_input and store_alias:
-            final_code = clean_auth_code(redirect_input)
-            status, token_data = exchange_code_for_tokens(final_code)
-
-            if status == 200 and "access_token" in token_data:
-                stores[store_alias] = {
-                    "access_token": token_data["access_token"],
-                    "refresh_token": token_data.get("refresh_token", ""),
-                }
-                save_json(STORES_FILE, stores)
-                st.success(f"Store '{store_alias}' Linked!")
-                st.rerun()
-            else:
-                st.error("Authentication Failed.")
-        else:
-            st.warning("All fields are required.")
-
-    if stores:
-        st.divider()
-        st.header("🗑️ Unlink / Delete Store")
-        store_to_remove = st.selectbox(
-            "Select Store to Delete:", list(stores.keys()), key="store_to_del"
-        )
-        if st.button(
-            f"❌ Delete {store_to_remove}", type="secondary", key="del_btn"
-        ):
-            del stores[store_to_remove]
-            save_json(STORES_FILE, stores)
-            st.success(f"Store '{store_to_remove}' has been removed!")
-            st.rerun()
-
+users_db = load_json(USERS_FILE, DEFAULT_USERS)
 templates = load_json(TEMPLATES_FILE, DEFAULT_TEMPLATES)
 logs = load_json(LOGS_FILE, {})
 
-if not stores:
-    st.info(
-        "Filhal koi store link nahi hai. Sidebar say apna store connect karein."
-    )
+# --- AUTHENTICATION STATE ---
+if "logged_in" not in st.session_state:
+    st.session_state.logged_in = False
+    st.session_state.username = None
+    st.session_state.role = None
+    st.session_state.assigned_stores = []
+
+
+# ==========================================================
+# 1. LOGIN SCREEN
+# ==========================================================
+if not st.session_state.logged_in:
+    st.title("🔐 eBay Automation Portal - Secure Login")
+
+    c1, c2, c3 = st.columns([1, 2, 1])
+    with c2:
+        with st.form("login_form"):
+            uname = st.text_input("Username")
+            pword = st.text_input("Password", type="password")
+            submit_btn = st.form_submit_btn = st.form_submit_button(
+                "🚀 Login", use_container_width=True
+            )
+
+            if submit_btn:
+                if (
+                    uname in users_db
+                    and users_db[uname]["password"] == hash_pass(pword)
+                ):
+                    st.session_state.logged_in = True
+                    st.session_state.username = uname
+                    st.session_state.role = users_db[uname]["role"]
+                    st.session_state.assigned_stores = users_db[uname].get(
+                        "assigned_stores", []
+                    )
+                    st.success(f"Welcome, {uname}!")
+                    st.rerun()
+                else:
+                    st.error("Invalid Username or Password.")
+
+    st.stop()
+
+
+# ==========================================================
+# 2. LOGGED IN DASHBOARD
+# ==========================================================
+
+# --- SIDEBAR LOGOUT & USER INFO ---
+with st.sidebar:
+    st.markdown(f"👤 Logged in as: **{st.session_state.username}**")
+    st.caption(f"Role: `{st.session_state.role.upper()}`")
+
+    if st.button("🚪 Logout", use_container_width=True):
+        st.session_state.logged_in = False
+        st.session_state.username = None
+        st.session_state.role = None
+        st.session_state.assigned_stores = []
+        st.rerun()
+
+    st.divider()
+
+    # Admin Exclusive Store Linker & Deleter
+    if st.session_state.role == "admin":
+        st.header("➕ Link New eBay Store")
+        st.markdown(f"[🔗 **Link eBay Store**]({AUTH_URL})")
+        redirect_input = st.text_input("Redirected URL / Code:")
+        store_alias = st.text_input("Store Name:")
+
+        if st.button("Save Store"):
+            if redirect_input and store_alias:
+                final_code = clean_auth_code(redirect_input)
+                status, token_data = exchange_code_for_tokens(final_code)
+
+                if status == 200 and "access_token" in token_data:
+                    stores[store_alias] = {
+                        "access_token": token_data["access_token"],
+                        "refresh_token": token_data.get("refresh_token", ""),
+                    }
+                    save_json(STORES_FILE, stores)
+                    st.success(f"Store '{store_alias}' Linked!")
+                    st.rerun()
+                else:
+                    st.error("Authentication Failed.")
+            else:
+                st.warning("All fields are required.")
+
+        if stores:
+            st.divider()
+            st.header("🗑️ Delete Store")
+            store_to_remove = st.selectbox(
+                "Select Store to Delete:",
+                list(stores.keys()),
+                key="store_to_del",
+            )
+            if st.button(f"❌ Delete {store_to_remove}", key="del_btn"):
+                del stores[store_to_remove]
+                save_json(STORES_FILE, stores)
+                st.success(f"Store '{store_to_remove}' deleted!")
+                st.rerun()
+
+# --- FILTER STORES FOR LOGGED IN USER ---
+if st.session_state.role == "admin":
+    accessible_stores = stores
 else:
-    main_tabs = st.tabs(["🏬 Orders & Smart Filters", "📝 Customize Templates"])
+    accessible_stores = {
+        k: v
+        for k, v in stores.items()
+        if k in st.session_state.assigned_stores
+    }
 
-    # --- TAB 2: TEMPLATES MANAGER ---
-    with main_tabs[1]:
-        st.subheader("📝 Customize Message Templates")
-        selected_tpl_edit = st.selectbox(
-            "Select Template to Edit:",
-            list(templates.keys()),
-            key="tpl_edit_select",
-        )
-        tpl_body = st.text_area(
-            "Template Content:",
-            value=templates[selected_tpl_edit],
-            height=150,
-            key=f"editor_{selected_tpl_edit}",
-        )
-        if st.button("💾 Save Template"):
-            templates[selected_tpl_edit] = tpl_body
-            save_json(TEMPLATES_FILE, templates)
-            st.success("Template Saved Successfully!")
-            st.rerun()
+# --- MAIN NAVIGATION TABS ---
+tab_names = ["🏬 Active Stores & Orders", "📝 Customize Templates"]
+if st.session_state.role == "admin":
+    tab_names.append("👥 Admin User Management")
 
-    # --- TAB 1: STORE ORDERS & SMART MESSAGING ---
-    with main_tabs[0]:
-        store_tabs = st.tabs(list(stores.keys()))
+main_tabs = st.tabs(tab_names)
 
-        for idx, (name, tokens) in enumerate(stores.items()):
-            with store_tabs[idx]:
-                col_title, col_del = st.columns([3, 1])
-                with col_title:
-                    st.subheader(f"🏪 Active Store: {name}")
-                with col_del:
-                    if st.button(
-                        f"🗑️ Remove {name}",
-                        key=f"del_tab_{name}",
-                        help="Unlink this store",
-                    ):
-                        del stores[name]
-                        save_json(STORES_FILE, stores)
-                        st.success(f"Store '{name}' unlinked!")
+# ==========================================================
+# TAB 3: ADMIN USER MANAGEMENT (Only for Admin)
+# ==========================================================
+if st.session_state.role == "admin":
+    with main_tabs[2]:
+        st.subheader("👥 User & Client Account Manager")
+
+        c_u1, c_u2 = st.columns([1, 1])
+
+        with c_u1:
+            st.markdown("#### ➕ Create New Client Login")
+            new_uname = st.text_input("Client Username:", key="new_u_name")
+            new_pword = st.text_input(
+                "Client Password:", type="password", key="new_u_pass"
+            )
+            store_choices = list(stores.keys())
+            assigned_store = st.selectbox(
+                "Assign eBay Store to this Client:",
+                store_choices if store_choices else ["No stores connected"],
+            )
+
+            if st.button("Create Client Account"):
+                if (
+                    new_uname
+                    and new_pword
+                    and assigned_store != "No stores connected"
+                ):
+                    if new_uname in users_db:
+                        st.error("Username already exists!")
+                    else:
+                        users_db[new_uname] = {
+                            "password": hash_pass(new_pword),
+                            "role": "client",
+                            "assigned_stores": [assigned_store],
+                        }
+                        save_json(USERS_FILE, users_db)
+                        st.success(
+                            f"Account created for '{new_uname}' assigned to '{assigned_store}'!"
+                        )
                         st.rerun()
+                else:
+                    st.warning("Please fill all fields properly.")
+
+        with c_u2:
+            st.markdown("#### 📋 Existing Users")
+            for u, data in users_db.items():
+                with st.expander(
+                    f"User: {u} ({data['role'].upper()}) - Assigned: {data.get('assigned_stores')}"
+                ):
+                    if u != "admin":
+                        if st.button(f"🗑️ Delete User {u}", key=f"del_user_{u}"):
+                            del users_db[u]
+                            save_json(USERS_FILE, users_db)
+                            st.success(f"User {u} deleted!")
+                            st.rerun()
+
+# ==========================================================
+# TAB 2: TEMPLATE CUSTOMIZER
+# ==========================================================
+with main_tabs[1]:
+    st.subheader("📝 Customize Message Templates")
+    selected_tpl_edit = st.selectbox(
+        "Select Template to Edit:",
+        list(templates.keys()),
+        key="tpl_edit_select",
+    )
+    tpl_body = st.text_area(
+        "Template Content:",
+        value=templates[selected_tpl_edit],
+        height=150,
+        key=f"editor_{selected_tpl_edit}",
+    )
+    if st.button("💾 Save Template"):
+        templates[selected_tpl_edit] = tpl_body
+        save_json(TEMPLATES_FILE, templates)
+        st.success("Template Saved Successfully!")
+        st.rerun()
+
+# ==========================================================
+# TAB 1: STORES & ORDERS
+# ==========================================================
+with main_tabs[0]:
+    if not accessible_stores:
+        st.warning(
+            "No eBay stores are assigned to your account or currently linked."
+        )
+    else:
+        store_tabs = st.tabs(list(accessible_stores.keys()))
+
+        for idx, (name, tokens) in enumerate(accessible_stores.items()):
+            with store_tabs[idx]:
+                st.subheader(f"🏪 Active Store: {name}")
 
                 if st.button(
                     f"🔄 Sync ALL Orders from eBay ({name})",
@@ -402,7 +531,6 @@ else:
                             key=f"filter_{name}",
                         )
 
-                    # Auto-select matching template
                     target_tpl_name = "Brand New Order Welcome"
                     if "Shipped" in status_filter:
                         target_tpl_name = "Shipped Notification"
@@ -423,7 +551,6 @@ else:
                             key=f"tpl_select_{name}",
                         )
 
-                    # Filter Orders Logic
                     display_orders = []
                     for o in orders:
                         order_type, _ = get_clean_order_status(o)
@@ -467,7 +594,6 @@ else:
                                 else None
                             )
 
-                            # Extract tracking details safely
                             tracking_num = "Uploaded on eBay"
                             carrier_name = "Standard Courier"
 
@@ -543,9 +669,9 @@ else:
 
                         for inst in o.get("fulfillmentStartInstructions", []):
                             step = inst.get("shippingStep", {})
-                            track_info = step.get("shipmentTracking", {}).get(
-                                "trackingNumber"
-                            )
+                            track_info = step.get(
+                                "shipmentTracking", {}
+                            ).get("trackingNumber")
                             carrier_info = step.get("shippingCarrierCode")
                             if track_info:
                                 tracking_num = track_info
