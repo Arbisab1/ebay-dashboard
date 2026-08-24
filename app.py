@@ -9,7 +9,7 @@ import requests
 import streamlit as st
 
 # --- CONFIGURATION ---
-WHATSAPP_NUMBER = "923011234527"  # Updated WhatsApp Number
+WHATSAPP_NUMBER = "923011234527"
 WHATSAPP_DEFAULT_MSG = "Hello Nawaz, I need help with the eBay Automation Dashboard."
 WHATSAPP_LINK = f"https://wa.me/{WHATSAPP_NUMBER}?text={requests.utils.quote(WHATSAPP_DEFAULT_MSG)}"
 
@@ -44,25 +44,39 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-# --- CLEAN MODERN THEME & FLOATING WHATSAPP CSS ---
+# --- STRICT LIGHT THEME ENFORCER (DARK MODE OVERRIDE) ---
 st.markdown(
     f"""
 <style>
+    /* Browser Dark Mode Override */
+    :root {{
+        color-scheme: light !important;
+    }}
+    
     header[data-testid="stHeader"], div[data-testid="stDecoration"] {{
         display: none !important;
     }}
-    .stApp {{
+
+    /* Global Text & App Styling */
+    html, body, .stApp {{
         background-color: #F8FAFC !important;
         color: #0F172A !important;
         font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif !important;
     }}
+
+    p, span, label, h1, h2, h3, h4, h5, h6, div, li {{
+        color: #0F172A !important;
+    }}
+
     .block-container {{
         padding-top: 1.5rem !important;
         padding-bottom: 2.5rem !important;
     }}
+
+    /* Metric Cards */
     div[data-testid="stMetric"] {{
         background-color: #FFFFFF !important;
-        border: 1px solid #E2E8F0 !important;
+        border: 1px solid #CBD5E1 !important;
         border-radius: 10px !important;
         box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05) !important;
         padding: 16px 20px !important;
@@ -72,6 +86,12 @@ st.markdown(
         font-weight: 700 !important;
         color: #2563EB !important;
     }}
+    div[data-testid="stMetricLabel"] p {{
+        color: #475569 !important;
+        font-weight: 600 !important;
+    }}
+
+    /* Buttons */
     button[kind="primary"] {{
         background-color: #2563EB !important;
         color: #FFFFFF !important;
@@ -79,28 +99,53 @@ st.markdown(
         border: none !important;
         border-radius: 8px !important;
     }}
+    button[kind="primary"] p {{
+        color: #FFFFFF !important;
+    }}
+
     button[kind="secondary"] {{
         background-color: #FFFFFF !important;
-        border: 1px solid #CBD5E1 !important;
-        color: #334155 !important;
-        border-radius: 8px !important;
-    }}
-    .streamlit-expanderHeader {{
-        background-color: #FFFFFF !important;
-        border: 1px solid #E2E8F0 !important;
-        border-radius: 8px !important;
+        border: 1px solid #94A3B8 !important;
         color: #1E293B !important;
+        border-radius: 8px !important;
         font-weight: 600 !important;
     }}
-    div[data-baseweb="select"], div[data-baseweb="input"], textarea {{
+    button[kind="secondary"] p {{
+        color: #1E293B !important;
+    }}
+
+    /* Expander Container */
+    .streamlit-expanderHeader {{
         background-color: #FFFFFF !important;
-        border-color: #CBD5E1 !important;
+        border: 1px solid #CBD5E1 !important;
+        border-radius: 8px !important;
         color: #0F172A !important;
+        font-weight: 600 !important;
+    }}
+    .streamlit-expanderHeader p, .streamlit-expanderHeader span {{
+        color: #0F172A !important;
+    }}
+
+    /* Form Inputs & Dropdowns */
+    input, textarea, select, div[data-baseweb="select"] {{
+        background-color: #FFFFFF !important;
+        color: #0F172A !important;
+        border-color: #94A3B8 !important;
         border-radius: 8px !important;
     }}
+    
+    div[data-baseweb="select"] * {{
+        color: #0F172A !important;
+        background-color: #FFFFFF !important;
+    }}
+
+    /* Sidebar Clean Styling */
     section[data-testid="stSidebar"] {{
         background-color: #FFFFFF !important;
         border-right: 1px solid #E2E8F0 !important;
+    }}
+    section[data-testid="stSidebar"] * {{
+        color: #0F172A !important;
     }}
 
     /* Floating WhatsApp Button */
@@ -109,7 +154,7 @@ st.markdown(
         bottom: 25px;
         right: 25px;
         background-color: #25D366;
-        color: white;
+        color: white !important;
         border-radius: 50px;
         padding: 10px 18px;
         font-size: 14px;
@@ -122,15 +167,16 @@ st.markdown(
         text-decoration: none;
         transition: all 0.3s ease;
     }}
+    .floating-whatsapp span {{
+        color: white !important;
+    }}
     .floating-whatsapp:hover {{
         background-color: #20BA5A;
-        color: white;
         transform: scale(1.05);
         box-shadow: 0 6px 20px rgba(37, 211, 102, 0.4);
     }}
 </style>
 
-<!-- Floating WhatsApp Action Link -->
 <a href="{WHATSAPP_LINK}" target="_blank" class="floating-whatsapp">
     <img src="https://upload.wikimedia.org/wikipedia/commons/6/6b/WhatsApp.svg" width="24" height="24" alt="WhatsApp">
     <span>Need Help? Chat with us</span>
@@ -387,10 +433,10 @@ if not st.session_state.logged_in:
     with c2:
         st.markdown(
             """
-        <div style="text-align: center; padding: 20px; background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 12px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05); margin-bottom: 16px;">
+        <div style="text-align: center; padding: 20px; background: #FFFFFF; border: 1px solid #CBD5E1; border-radius: 12px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05); margin-bottom: 16px;">
             <img src="https://upload.wikimedia.org/wikipedia/commons/1/1b/EBay_logo.svg" width="90" style="margin-bottom: 8px;">
             <h3 style="margin: 0; color: #0F172A; font-weight: 700;">eBay Automation Portal</h3>
-            <p style="margin-top: 4px; color: #64748B; font-size: 0.85rem;">Sign in or create an account for your store</p>
+            <p style="margin-top: 4px; color: #475569; font-size: 0.85rem;">Sign in or create an account for your store</p>
         </div>
         """,
             unsafe_allow_html=True,
@@ -569,7 +615,7 @@ with st.sidebar:
         </div>
         <p style="font-size: 0.8rem; color: #15803D; margin-bottom: 8px;">Got questions or need help setting up?</p>
         <a href="{WHATSAPP_LINK}" target="_blank" style="text-decoration: none;">
-            <div style="background: #22C55E; color: white; text-align: center; padding: 6px; border-radius: 6px; font-weight: 600; font-size: 0.85rem;">
+            <div style="background: #22C55E; color: white !important; text-align: center; padding: 6px; border-radius: 6px; font-weight: 600; font-size: 0.85rem;">
                 Chat on WhatsApp
             </div>
         </a>
@@ -867,7 +913,7 @@ elif "Connect My eBay Store" in selected_page or "Link & Manage eBay Stores" in 
                 with st.container():
                     st.markdown(
                         f"""
-                    <div style="padding: 12px 16px; background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 8px; margin-bottom: 10px;">
+                    <div style="padding: 12px 16px; background: #FFFFFF; border: 1px solid #CBD5E1; border-radius: 8px; margin-bottom: 10px;">
                         <strong style="font-size: 1.05rem; color: #0F172A;">🏪 {s_name}</strong><br>
                         <span style="color: #16A34A; font-size: 0.85rem; font-weight: 500;">● Connected & Active</span>
                     </div>
@@ -900,10 +946,10 @@ elif selected_page == "Registered Clients Overview" and st.session_state.role ==
             with st.container():
                 st.markdown(
                     f"""
-                <div style="padding: 14px 18px; background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 8px; margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center;">
+                <div style="padding: 14px 18px; background: #FFFFFF; border: 1px solid #CBD5E1; border-radius: 8px; margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center;">
                     <div>
                         <strong style="font-size: 1.05rem;">👤 Client: {u}</strong><br>
-                        <span style="color: #64748B; font-size: 0.85rem;">Store Name: <b>{assigned}</b></span>
+                        <span style="color: #475569; font-size: 0.85rem;">Store Name: <b>{assigned}</b></span>
                     </div>
                     <div>
                         <span style="color: {'#16A34A' if is_connected else '#DC2626'}; font-weight: 600; font-size: 0.9rem;">
