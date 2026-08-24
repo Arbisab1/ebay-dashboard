@@ -285,8 +285,13 @@ def get_fresh_token(refresh_token):
         return res.json().get("access_token")
     return None
 
-
-def fetch_all_ebay_orders(access_token, date_filter=None):
+# --- CACHED API CALL ---
+@st.cache_data(show_spinner=False, ttl=3600) # Cache for 1 hour, or until params change
+def fetch_all_ebay_orders_cached(access_token, date_filter_str):
+    """
+    Fetches orders.date_filter_str is used as a cache key.
+    Format: "YYYY-MM-DD..YYYY-MM-DD" or "NONE"
+    """
     headers = {
         "Authorization": f"Bearer {access_token}",
         "Content-Type": "application/json",
@@ -299,8 +304,8 @@ def fetch_all_ebay_orders(access_token, date_filter=None):
 
     while True:
         url = f"{base_url}?limit={limit}&offset={offset}"
-        if date_filter:
-            url += f"&filter=creationdate:[{date_filter[0]}..{date_filter[1]}]"
+        if date_filter_str and date_filter_str != "NONE":
+            url += f"&filter=creationdate:[{date_filter_str}]"
 
         res = requests.get(url, headers=headers)
         if res.status_code == 200:
@@ -314,6 +319,8 @@ def fetch_all_ebay_orders(access_token, date_filter=None):
                 break
             offset += limit
         else:
+            # If token expired during pagination, we can't refresh here easily within cache.
+            # The main loop handles initial token refresh.
             break
     return all_orders
 
@@ -656,49 +663,79 @@ if "Orders &" in selected_page:
         st.markdown("#### 🔄 Sync Orders from eBay")
         
         # --- DATE FILTER / ALL ORDERS SWITCH ---
-        fetch_all_orders_toggle = st.checkbox("📋 Fetch ALL Orders (No Date Limit)", value=False)
+        fetch_all_orders_toggle = st.checkbox("📋 Fetch ALL Orders (No Date Limit)", value=False, key="all_orders_toggle")
         
         col_date1, col_date2, col_sync_btn = st.columns([2, 2, 1.5])
         
         with col_date1:
             default_start = (datetime.now() - timedelta(days=30)).date()
-            start_date = st.date_input("From Date:", value=default_start, disabled=fetch_all_orders_toggle)
+            start_date = st.date_input("From Date:", value=default_start, disabled=fetch_all_orders_toggle, key="start_date_input")
             
         with col_date2:
             default_end = datetime.now().date()
-            end_date = st.date_input("To Date:", value=default_end, disabled=fetch_all_orders_toggle)
+            end_date = st.date_input("To Date:", value=default_end, disabled=fetch_all_orders_toggle, key="end_date_input")
 
-        with col_sync_btn:
-            st.write("")
-            if st.button(
-                f"🔄 Sync Orders",
-                type="primary",
-                use_container_width=True,
-            ):
-                if not fetch_all_orders_toggle and start_date > end_date:
-                    st.error("'From Date' cannot be after 'To Date'.")
-                else:
-                    with st.spinner("Fetching orders from eBay API..."):
-                        date_tuple = None
-                        if not fetch_all_orders_toggle:
-                            ebay_start = f"{start_date}T00:00:00.000Z"
-                            ebay_end = f"{end_date}T23:59:59.999Z"
-                            date_tuple = (ebay_start, ebay_end)
-                        
-                        all_orders = fetch_all_ebay_orders(tokens["access_token"], date_filter=date_tuple)
-                        
-                        if not all_orders and tokens.get("refresh_token"):
-                            new_t = get_fresh_token(tokens["refresh_token"])
-                            if new_t:
-                                stores[active_store_name]["access_token"] = new_t
-                                save_json(STORES_FILE, stores)
-                                all_orders = fetch_all_ebay_orders(new_t, date_filter=date_tuple)
+        # --- AUTO-TRIGGER SYNC ON FILTER CHANGE ---
+        # Generate cache key based on current filters
+        date_filter_key = "NONE"
+        if not fetch_all_orders_toggle:
+            if start_date > end_date:
+                st.error("'From Date' cannot be after 'To Date'.")
+                orders = [] # Clear orders on error
+                st.session_state[f"orders_{active_store_name}"] = []
+            else:
+                date_filter_key = f"{start_date}T00:00:00.000Z..{end_date}T23:59:59.999Z"
 
-                        st.session_state[f"orders_{active_store_name}"] = all_orders
-                        st.success(f"Synced {len(all_orders)} orders successfully!")
-
+        # Initialize orders variable
         orders = st.session_state.get(f"orders_{active_store_name}", [])
 
+        # Button column (Manual sync remains an option)
+        with col_sync_btn:
+            st.write("")
+            manual_sync = st.button(
+                f"🔄 Force Refresh",
+                type="secondary",
+                use_container_width=True,
+                key="manual_sync_btn"
+            )
+
+        # TRIGGER FETCH: If filters changed or manual refresh requested
+        current_filter_hash = hash((active_store_name, date_filter_key))
+        last_filter_hash = st.session_state.get(f"last_hash_{active_store_name}")
+
+        if manual_sync or current_filter_hash != last_filter_hash:
+            # Prevent fetch if date error exists
+            if not (not fetch_all_orders_toggle and start_date > end_date):
+                with st.spinner(f"Syncing orders for {active_store_name}..."):
+                    # Check token validity before cached call (main loop level logic)
+                    access_token = tokens["access_token"]
+                    # Simplified validity check (can be improved based on actual response)
+                    test_headers = {"Authorization": f"Bearer {access_token}"}
+                    test_res = requests.get("https://api.ebay.com/sell/fulfillment/v1/order?limit=1", headers=test_headers)
+                    
+                    if test_res.status_code != 200 and tokens.get("refresh_token"):
+                        new_t = get_fresh_token(tokens["refresh_token"])
+                        if new_t:
+                            stores[active_store_name]["access_token"] = new_t
+                            save_json(STORES_FILE, stores)
+                            access_token = new_t
+
+                    # Clear cache if manual refresh
+                    if manual_sync:
+                        st.cache_data.clear()
+
+                    # Perform cached fetch
+                    try:
+                        fetched_orders = fetch_all_ebay_orders_cached(access_token, date_filter_key)
+                        st.session_state[f"orders_{active_store_name}"] = fetched_orders
+                        st.session_state[f"last_hash_{active_store_name}"] = current_filter_hash
+                        orders = fetched_orders # Update local variable
+                        st.success(f"Synced {len(fetched_orders)} orders!")
+                    except Exception as e:
+                        st.error(f"Failed to fetch orders: {str(e)}")
+                        orders = []
+
+        # --- DISPLAY & FILTERING ---
         if orders:
             st.divider()
             col_filter, col_template = st.columns([2, 2])
@@ -711,7 +748,7 @@ if "Orders &" in selected_page:
                 "❌ Cancelled Orders",
             ]
             with col_filter:
-                status_filter = st.selectbox("Target Filter Group:", filter_options)
+                status_filter = st.selectbox("Target Filter Group:", filter_options, key="status_filter_select")
 
             target_tpl_name = "Brand New Order Welcome"
             if "Shipped" in status_filter:
@@ -728,8 +765,10 @@ if "Orders &" in selected_page:
                     "Active Message Template:",
                     list(templates.keys()),
                     index=default_tpl_index,
+                    key="template_filter_select"
                 )
 
+            # Local Filtering based on Status
             display_orders = []
             for o in orders:
                 order_type, _ = get_clean_order_status(o)
@@ -756,12 +795,15 @@ if "Orders &" in selected_page:
 
             st.write("")
 
+            # Bulk Actions
             if st.button(
                 f"🚀 Send '{chosen_template}' to All ({len(display_orders)}) Matched Orders",
                 type="primary",
+                key="bulk_send_btn"
             ):
                 progress_bar = st.progress(0)
                 sent_count = 0
+                access_token = accessible_stores[active_store_name]["access_token"]
 
                 for i, o in enumerate(display_orders):
                     order_id = o.get("orderId", "")
@@ -787,38 +829,45 @@ if "Orders &" in selected_page:
                         if carrier_info:
                             carrier_name = carrier_info
 
-                    msg_body = templates[chosen_template].format(
-                        buyer=buyer,
-                        order_id=order_id,
-                        tracking_number=tracking_num,
-                        carrier=carrier_name,
-                    )
-
-                    if item_id:
-                        success = send_ebay_message(
-                            tokens["access_token"], item_id, buyer, msg_body
+                    try:
+                        msg_body = templates[chosen_template].format(
+                            buyer=buyer,
+                            order_id=order_id,
+                            tracking_number=tracking_num,
+                            carrier=carrier_name,
                         )
-                        if success:
-                            sent_count += 1
-                            logs[f"{order_id}_{chosen_template}"] = {
-                                "buyer": buyer,
-                                "status": "Sent",
-                                "time": datetime.now().strftime(
-                                    "%Y-%m-%d %H:%M:%S"
-                                ),
-                            }
 
-                    time.sleep(0.3)
+                        if item_id:
+                            success = send_ebay_message(
+                                access_token, item_id, buyer, msg_body
+                            )
+                            if success:
+                                sent_count += 1
+                                logs[f"{order_id}_{chosen_template}"] = {
+                                    "buyer": buyer,
+                                    "status": "Sent",
+                                    "time": datetime.now().strftime(
+                                        "%Y-%m-%d %H:%M:%S"
+                                    ),
+                                }
+                    except Exception as e:
+                        # Handle formatting errors if template variables don't match
+                        pass
+
+                    time.sleep(0.3) # Rate limit protection
                     progress_bar.progress((i + 1) / len(display_orders))
 
                 save_json(LOGS_FILE, logs)
                 st.success(
                     f"✅ {sent_count}/{len(display_orders)} messages dispatched!"
                 )
+                time.sleep(1)
+                st.rerun() # Refresh log status
 
             st.divider()
             st.markdown("### 📋 Order List & Direct Actions")
 
+            # Individual Order Cards
             for o in display_orders:
                 order_id = o.get("orderId", "")
                 buyer = o.get("buyer", {}).get("username", "Buyer")
@@ -848,16 +897,21 @@ if "Orders &" in selected_page:
                     if carrier_info:
                         carrier_name = carrier_info
 
-                formatted_preview = templates[chosen_template].format(
-                    buyer=buyer,
-                    order_id=order_id,
-                    tracking_number=tracking_num,
-                    carrier=carrier_name,
-                )
+                # Preview Logic (wrapped in try/except for dynamic variables)
+                try:
+                    formatted_preview = templates[chosen_template].format(
+                        buyer=buyer,
+                        order_id=order_id,
+                        tracking_number=tracking_num,
+                        carrier=carrier_name,
+                    )
+                except:
+                    formatted_preview = templates[chosen_template] # Fallback if formatting fails
 
                 log_key = f"{order_id}_{chosen_template}"
                 is_sent = log_key in logs
 
+                # Expander Card
                 with st.expander(
                     f"Order #{order_id} | Buyer: {buyer} | {clean_badge} | {'✅ Sent' if is_sent else '⏳ Ready'}"
                 ):
@@ -873,7 +927,7 @@ if "Orders &" in selected_page:
                             f"Preview ({chosen_template}):",
                             value=formatted_preview,
                             height=110,
-                            key=f"input_{order_id}_{chosen_template}_{status_filter}",
+                            key=f"input_{order_id}_{chosen_template}_{current_filter_hash}",
                         )
 
                         if st.button(
@@ -882,8 +936,9 @@ if "Orders &" in selected_page:
                             type="secondary",
                         ):
                             if item_id != "N/A":
+                                access_token = accessible_stores[active_store_name]["access_token"]
                                 success = send_ebay_message(
-                                    tokens["access_token"],
+                                    access_token,
                                     item_id,
                                     buyer,
                                     user_msg_input,
@@ -898,9 +953,13 @@ if "Orders &" in selected_page:
                                     }
                                     save_json(LOGS_FILE, logs)
                                     st.success(f"Sent to {buyer}!")
+                                    time.sleep(1)
                                     st.rerun()
                                 else:
-                                    st.error("Failed to send message.")
+                                    st.error("Failed to send message via eBay WS API.")
+
+        elif orders is not None:
+             st.info("No orders found for the selected store and date range.")
 
 
 # ==========================================================
@@ -923,7 +982,7 @@ elif (
         st.markdown(f"👉 [**Authorize with eBay (Click Here)**]({AUTH_URL})")
         st.write("")
 
-        redirect_input = st.text_input("Redirected URL / Code:")
+        redirect_input = st.text_input("Redirected URL / Code:", key="auth_code_input")
 
         assigned_s = (
             st.session_state.assigned_stores[0]
@@ -931,12 +990,13 @@ elif (
             and st.session_state.assigned_stores[0] != "ALL"
             else ""
         )
-        store_alias = st.text_input("Store Name / Label:", value=assigned_s)
+        store_alias = st.text_input("Store Name / Label:", value=assigned_s, key="store_label_input")
 
-        if st.button("Complete Authorization", type="primary"):
+        if st.button("Complete Authorization", type="primary", key="complete_auth_btn"):
             if redirect_input and store_alias:
                 final_code = clean_auth_code(redirect_input)
-                status, token_data = exchange_code_for_tokens(final_code)
+                with st.spinner("Exchanging code for tokens..."):
+                    status, token_data = exchange_code_for_tokens(final_code)
 
                 if status == 200 and "access_token" in token_data:
                     stores[store_alias] = {
@@ -950,12 +1010,13 @@ elif (
                         users_db[u_curr]["assigned_stores"] = [store_alias]
                         save_json(USERS_FILE, users_db)
                         st.session_state.assigned_stores = [store_alias]
-
+                    
+                    st.cache_data.clear() # Clear order cache on new store connection
                     st.success(f"Store '{store_alias}' linked successfully!")
                     time.sleep(1)
                     st.rerun()
                 else:
-                    st.error("Authentication failed. Please verify code/URL.")
+                    st.error(f"Authentication failed. eBay returned: {token_data.get('error_description', 'Unknown error')}")
             else:
                 st.warning("All fields are required.")
 
@@ -982,7 +1043,9 @@ elif (
                     ):
                         del stores[s_name]
                         save_json(STORES_FILE, stores)
+                        st.cache_data.clear() # Clear cache on disconnect
                         st.success(f"Store '{s_name}' removed!")
+                        time.sleep(1)
                         st.rerun()
 
 
@@ -1032,6 +1095,7 @@ elif (
                     del users_db[u]
                     save_json(USERS_FILE, users_db)
                     st.success(f"Client '{u}' removed!")
+                    time.sleep(1)
                     st.rerun()
 
 
@@ -1056,7 +1120,7 @@ elif "Message Templates" in selected_page:
     st.divider()
 
     selected_tpl_edit = st.selectbox(
-        "Select Template to Edit:", list(templates.keys())
+        "Select Template to Edit:", list(templates.keys()), key="template_edit_select"
     )
     tpl_body = st.text_area(
         "Template Content:",
@@ -1065,8 +1129,9 @@ elif "Message Templates" in selected_page:
         key=f"editor_{selected_tpl_edit}",
     )
 
-    if st.button("Save Template", type="primary"):
+    if st.button("Save Template", type="primary", key="save_template_btn"):
         templates[selected_tpl_edit] = tpl_body
         save_json(TEMPLATES_FILE, templates)
         st.success(f"Template '{selected_tpl_edit}' saved successfully!")
+        time.sleep(1)
         st.rerun()
