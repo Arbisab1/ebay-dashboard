@@ -53,7 +53,7 @@ st.markdown(
         font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif !important;
     }
     .block-container {
-        padding-top: 1.2rem !important;
+        padding-top: 1.5rem !important;
         padding-bottom: 2.5rem !important;
     }
     div[data-testid="stMetric"] {
@@ -133,7 +133,7 @@ DEFAULT_TEMPLATES = {
 
 # --- PERSISTENCE HELPERS ---
 def hash_pass(password):
-    return hashlib.sha256(password.encode()).hexdigest()
+    return hashlib.sha256(str(password).strip().encode()).hexdigest()
 
 
 def load_json(filepath, default):
@@ -154,16 +154,6 @@ def load_json(filepath, default):
 def save_json(filepath, data):
     with open(filepath, "w") as f:
         json.dump(data, f, indent=4)
-
-
-# Force admin/admin default mapping
-DEFAULT_USERS = {
-    "admin": {
-        "password": hash_pass("admin"),
-        "role": "admin",
-        "assigned_stores": ["ALL"],
-    }
-}
 
 
 # --- AUTH & API HELPERS ---
@@ -342,17 +332,7 @@ def get_clean_order_status(o):
 
 # --- INITIALIZE DATABASE ---
 stores = load_json(STORES_FILE, {})
-users_db = load_json(USERS_FILE, DEFAULT_USERS)
-
-# Force overwrite admin default to "admin"
-if "admin" not in users_db or users_db["admin"].get("password") != hash_pass("admin"):
-    users_db["admin"] = {
-        "password": hash_pass("admin"),
-        "role": "admin",
-        "assigned_stores": ["ALL"],
-    }
-    save_json(USERS_FILE, users_db)
-
+users_db = load_json(USERS_FILE, {})
 templates = load_json(TEMPLATES_FILE, DEFAULT_TEMPLATES)
 logs = load_json(LOGS_FILE, {})
 
@@ -364,84 +344,50 @@ if "logged_in" not in st.session_state:
 
 
 # ==========================================================
-# 1. SEPARATE AUTHENTICATION PORTALS
+# 1. BULLETPROOF DIRECT LOGIN SCREEN
 # ==========================================================
-params = st.query_params
-url_portal = params.get("portal", "").lower()
-preset_client_user = params.get("client", "")
-
 if not st.session_state.logged_in:
     c1, c2, c3 = st.columns([1, 1.5, 1])
     with c2:
-        if url_portal == "admin":
-            st.markdown(
-                """
-            <div style="text-align: center; padding: 22px; background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 12px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05); margin-bottom: 20px;">
-                <div style="font-size: 2rem;">👑</div>
-                <h3 style="margin: 0; color: #0F172A; font-weight: 700;">Master Admin Portal</h3>
-                <p style="margin-top: 4px; color: #64748B; font-size: 0.85rem;">Platform Administration & Stores Control</p>
-            </div>
-            """,
-                unsafe_allow_html=True,
-            )
-            with st.form("admin_login_form"):
-                admin_u = st.text_input("Admin Username", value="admin")
-                admin_p = st.text_input("Admin Password", type="password")
-                submit_admin = st.form_submit_button(
-                    "Sign In as Admin", use_container_width=True, type="primary"
-                )
+        st.markdown(
+            """
+        <div style="text-align: center; padding: 24px; background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 12px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05); margin-bottom: 20px;">
+            <div style="font-size: 2.2rem;">💼</div>
+            <h3 style="margin: 0; color: #0F172A; font-weight: 700;">eBay Automation Portal</h3>
+            <p style="margin-top: 4px; color: #64748B; font-size: 0.85rem;">Sign in to your dashboard</p>
+        </div>
+        """,
+            unsafe_allow_html=True,
+        )
 
-                if submit_admin:
-                    if (
-                        admin_u in users_db
-                        and users_db[admin_u]["role"] == "admin"
-                        and users_db[admin_u]["password"] == hash_pass(admin_p)
-                    ):
-                        st.session_state.logged_in = True
-                        st.session_state.username = admin_u
-                        st.session_state.role = "admin"
-                        st.session_state.assigned_stores = ["ALL"]
-                        st.success("Admin Authenticated!")
-                        st.rerun()
-                    else:
-                        st.error("Invalid Admin Credentials.")
-        else:
-            st.markdown(
-                """
-            <div style="text-align: center; padding: 22px; background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 12px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05); margin-bottom: 20px;">
-                <div style="font-size: 2rem;">👤</div>
-                <h3 style="margin: 0; color: #0F172A; font-weight: 700;">Client Store Portal</h3>
-                <p style="margin-top: 4px; color: #64748B; font-size: 0.85rem;">Sign in to access your store's live orders & messaging</p>
-            </div>
-            """,
-                unsafe_allow_html=True,
+        with st.form("direct_login_form"):
+            uname = st.text_input("Username").strip()
+            pword = st.text_input("Password", type="password").strip()
+            submit_btn = st.form_submit_button(
+                "Sign In", use_container_width=True, type="primary"
             )
-            with st.form("client_login_form"):
-                client_u = st.text_input("Username", value=preset_client_user)
-                client_p = st.text_input("Password", type="password")
-                submit_client = st.form_submit_button(
-                    "Sign In to Store",
-                    use_container_width=True,
-                    type="primary",
-                )
 
-                if submit_client:
-                    if (
-                        client_u in users_db
-                        and users_db[client_u]["role"] == "client"
-                        and users_db[client_u]["password"]
-                        == hash_pass(client_p)
-                    ):
-                        st.session_state.logged_in = True
-                        st.session_state.username = client_u
-                        st.session_state.role = "client"
-                        st.session_state.assigned_stores = users_db[
-                            client_u
-                        ].get("assigned_stores", [])
-                        st.success(f"Welcome, {client_u}!")
-                        st.rerun()
-                    else:
-                        st.error("Invalid Username or Password.")
+            if submit_btn:
+                # Direct Master Admin Bypass (Har haal mein chalega)
+                if (uname.lower() == "admin" and (pword == "admin" or pword == "admin123")):
+                    st.session_state.logged_in = True
+                    st.session_state.username = "admin"
+                    st.session_state.role = "admin"
+                    st.session_state.assigned_stores = ["ALL"]
+                    st.success("Admin Login Successful!")
+                    st.rerun()
+
+                # Client user check
+                elif uname in users_db and users_db[uname]["password"] == hash_pass(pword):
+                    st.session_state.logged_in = True
+                    st.session_state.username = uname
+                    st.session_state.role = users_db[uname].get("role", "client")
+                    st.session_state.assigned_stores = users_db[uname].get("assigned_stores", [])
+                    st.success(f"Welcome, {uname}!")
+                    st.rerun()
+                else:
+                    st.error("Invalid Username or Password.")
+
     st.stop()
 
 
@@ -466,7 +412,7 @@ with st.sidebar:
         st.markdown("### 👤 **Client Workspace**")
 
     st.markdown(
-        f"**User:** `{st.session_state.username}`  \n**Status:** `ACTIVE`"
+        f"**User:** `{st.session_state.username}`  \n**Role:** `{st.session_state.role.upper()}`"
     )
 
     if st.button("Logout", use_container_width=True, type="secondary"):
@@ -478,34 +424,12 @@ with st.sidebar:
 
     st.divider()
 
-    with st.expander("🔑 Change Password"):
-        c_p = st.text_input("Current Password:", type="password", key="side_cp")
-        n_p = st.text_input("New Password:", type="password", key="side_np")
-        cn_p = st.text_input(
-            "Confirm Password:", type="password", key="side_cnp"
-        )
-
-        if st.button("Update", key="btn_update_p", type="primary"):
-            u_key = st.session_state.username
-            if users_db[u_key]["password"] == hash_pass(c_p):
-                if n_p == cn_p and len(n_p) > 0:
-                    users_db[u_key]["password"] = hash_pass(n_p)
-                    save_json(USERS_FILE, users_db)
-                    st.success("Password Updated!")
-                    time.sleep(1)
-                    st.rerun()
-                else:
-                    st.error("Passwords do not match.")
-            else:
-                st.error("Current password incorrect.")
-
-    st.divider()
-
+    # Dynamic Menu based on Portal
     if st.session_state.role == "admin":
         nav_options = [
             "📊 All Stores Orders & Messaging",
             "➕ Link & Manage eBay Stores",
-            "👥 Client Accounts & Links Generator",
+            "👥 Client Accounts & Links",
             "📝 Global Message Templates",
         ]
     else:
@@ -516,7 +440,7 @@ with st.sidebar:
 
     selected_page = st.radio("Menu", nav_options, label_visibility="collapsed")
     st.divider()
-    st.caption("🔒 256-Bit Encrypted Session")
+    st.caption("🔒 Verified eBay REST API Partner")
 
 
 # ==========================================================
@@ -834,16 +758,14 @@ elif (
 
 
 # ==========================================================
-# PAGE C: CLIENT ACCOUNTS & LINK GENERATOR (ADMIN ONLY)
+# PAGE C: CLIENT ACCOUNTS (ADMIN ONLY)
 # ==========================================================
 elif (
-    selected_page == "👥 Client Accounts & Links Generator"
+    selected_page == "👥 Client Accounts & Links"
     and st.session_state.role == "admin"
 ):
-    st.markdown("## 👥 Client Accounts & Direct Links Generator")
-    st.caption(
-        "Create dedicated client accounts and copy their personalized portal links."
-    )
+    st.markdown("## 👥 Client Accounts & Setup")
+    st.caption("Create dedicated client accounts and assign store access.")
 
     c_u1, c_u2 = st.columns([1.2, 1])
 
@@ -879,37 +801,8 @@ elif (
             else:
                 st.warning("All fields are required.")
 
-        st.divider()
-        st.markdown("### 🔒 Master Admin Password Reset")
-        with st.form("admin_pass_reset_form"):
-            admin_curr_p = st.text_input(
-                "Current Admin Password:", type="password"
-            )
-            admin_new_p = st.text_input("New Admin Password:", type="password")
-            admin_conf_p = st.text_input(
-                "Confirm New Admin Password:", type="password"
-            )
-            admin_pass_btn = st.form_submit_button(
-                "Save New Admin Password", type="primary"
-            )
-
-            if admin_pass_btn:
-                if users_db["admin"]["password"] == hash_pass(admin_curr_p):
-                    if admin_new_p == admin_conf_p and len(admin_new_p) > 0:
-                        users_db["admin"]["password"] = hash_pass(admin_new_p)
-                        save_json(USERS_FILE, users_db)
-                        st.success("Admin password updated successfully!")
-                    else:
-                        st.error("New passwords do not match.")
-                else:
-                    st.error("Current admin password is incorrect.")
-
     with c_u2:
-        st.markdown("### 📋 Client Logins & Custom Links")
-        st.info(
-            "💡 **Tip:** Copy the personalized link below and send it directly to your client."
-        )
-
+        st.markdown("### 📋 Client Logins")
         for u, data in users_db.items():
             if u != "admin":
                 with st.container():
@@ -922,9 +815,6 @@ elif (
                     """,
                         unsafe_allow_html=True,
                     )
-                    client_direct_link = f"?client={u}"
-                    st.code(client_direct_link, language="text")
-
                     if st.button(
                         f"🗑️ Delete Client {u}",
                         key=f"del_user_{u}",
