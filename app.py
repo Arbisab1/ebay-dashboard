@@ -957,7 +957,7 @@ if "Orders &" in selected_page:
 
 
 # ==========================================================
-# PAGE B: SALES & REVENUE REPORTS (EXACT NET EARNINGS MAPPING)
+# PAGE B: SALES & REVENUE REPORTS (ACCURATE SELLER HUB ORDER EARNINGS)
 # ==========================================================
 elif selected_page == "📈 Sales & Revenue Reports":
     st.markdown(
@@ -969,7 +969,7 @@ elif selected_page == "📈 Sales & Revenue Reports":
     """,
         unsafe_allow_html=True,
     )
-    st.caption("Exact Order Earnings (Buyer Total minus eBay Selling Fees and Payment Refunds).")
+    st.caption("Exact Order Earnings matching eBay Seller Hub (Item Price + Shipping - Selling Fees - Taxes - Refunds).")
 
     if not accessible_stores:
         st.info("👋 Welcome! Your store is not connected yet.")
@@ -1008,7 +1008,7 @@ elif selected_page == "📈 Sales & Revenue Reports":
 
         if refresh_sales_btn or sales_hash != last_sales_hash:
             if not (not fetch_all_sales_toggle and sales_start_date > sales_end_date):
-                with st.spinner("Calculating actual order earnings and fees..."):
+                with st.spinner("Calculating exact Seller Hub earnings..."):
                     access_token = tokens["access_token"]
                     test_headers = {"Authorization": f"Bearer {access_token}"}
                     test_res = requests.get("https://api.ebay.com/sell/fulfillment/v1/order?limit=1", headers=test_headers)
@@ -1040,23 +1040,30 @@ elif selected_page == "📈 Sales & Revenue Reports":
                 created_date = o.get("creationDate", "")[:10]
                 buyer = o.get("buyer", {}).get("username", "Buyer")
                 
-                # Pricing Breakdown
+                # Pricing Summary Components
                 pricing = o.get("pricingSummary", {})
-                total_obj = pricing.get("total", {})
-                gross_order_total = float(total_obj.get("value", 0.0))
-                currency_code = total_obj.get("currency", currency_code)
                 
-                # Subtotal
+                # 1. Total Price (Items Subtotal)
                 subtotal_obj = pricing.get("priceSubtotal", {})
                 if not subtotal_obj:
                     subtotal_obj = pricing.get("subtotal", {})
-                amount_subtotal = float(subtotal_obj.get("value", gross_order_total))
+                amount_subtotal = float(subtotal_obj.get("value", 0.0))
+                currency_code = subtotal_obj.get("currency", currency_code)
 
-                # Exact Net Earnings (Order Details Payout Logic)
+                # 2. Shipping Charged to Buyer
+                delivery_cost_obj = pricing.get("deliveryCost", {})
+                delivery_cost = float(delivery_cost_obj.get("value", 0.0))
+
+                # 3. eBay Marketplace Tax (Collected & remitted directly by eBay)
+                tax_obj = pricing.get("tax", {})
+                tax_collected_by_ebay = float(tax_obj.get("value", 0.0))
+
+                # 4. Total Fees Paid by Seller
+                total_fee_obj = o.get("totalMarketplaceFee", {})
+                total_selling_fees = float(total_fee_obj.get("value", 0.0))
+
+                # 5. Refunds Paid Back to Buyer
                 payment_summary = o.get("paymentSummary", {})
-                total_due_seller_obj = payment_summary.get("totalDueSeller", {})
-                
-                # Sum refunds for this order
                 refunds_list = payment_summary.get("refunds", [])
                 refund_amount = 0.0
                 for r in refunds_list:
@@ -1065,15 +1072,13 @@ elif selected_page == "📈 Sales & Revenue Reports":
                     except Exception:
                         pass
 
-                # Sum marketplace selling fees
-                total_fee_obj = o.get("totalMarketplaceFee", {})
-                fee_val = float(total_fee_obj.get("value", 0.0))
-
-                # Exact Payout received by seller
+                # Exact Seller Hub Calculation
+                total_due_seller_obj = payment_summary.get("totalDueSeller", {})
                 if total_due_seller_obj and "value" in total_due_seller_obj:
-                    order_earnings = float(total_due_seller_obj.get("value", 0.0))
+                    order_earnings = round(float(total_due_seller_obj.get("value", 0.0)), 2)
                 else:
-                    order_earnings = round(max(0.0, gross_order_total - fee_val - refund_amount), 2)
+                    gross_seller_pool = (amount_subtotal + delivery_cost)
+                    order_earnings = round(max(0.0, gross_seller_pool - total_selling_fees - refund_amount), 2)
 
                 status_raw, status_badge = get_clean_order_status(o)
 
@@ -1141,7 +1146,7 @@ elif selected_page == "📈 Sales & Revenue Reports":
 
             # KPI Display
             k1, k2, k3, k4 = st.columns(4)
-            metric_rev_label = "Total Refunded Amount" if "Refunded" in chosen_segment else "Total Net Order Earnings"
+            metric_rev_label = "Total Refund Return Amount" if "Refunded" in chosen_segment else "Total Net Order Earnings"
             k1.metric(metric_rev_label, f"{currency_code} {segment_revenue:,.2f}")
             k2.metric("Total Orders", segment_orders_count)
             k3.metric("Total Subtotal", f"{currency_code} {segment_subtotal:,.2f}")
