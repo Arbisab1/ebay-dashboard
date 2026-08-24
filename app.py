@@ -353,7 +353,7 @@ def get_template_index(tpl_dict, target_key):
 
 
 def get_clean_order_status(o):
-    # Check for True Payment Refunds
+    # 1. Check for True Payment Refunds
     payment_summary = o.get("paymentSummary", {})
     refunds_list = payment_summary.get("refunds", [])
     total_refunded_val = 0.0
@@ -367,13 +367,13 @@ def get_clean_order_status(o):
     if total_refunded_val > 0 or payment_status in ["REFUNDED", "PARTIALLY_REFUNDED"]:
         return "REFUNDED", "💸 Refunded"
 
-    # Check for Pure Cancellations
+    # 2. Check for Pure Cancellations
     cancel_state = o.get("cancelStatus", {}).get("cancelState", "").strip().upper()
     cancel_req = o.get("cancelStatus", {}).get("cancelRequests", [])
     if cancel_state in ["CANCELED", "CANCELLED", "CANCEL_REQUESTED", "IN_PROGRESS"] or len(cancel_req) > 0:
         return "CANCELLED", "❌ Cancelled"
 
-    # Check for Delivery & Shipping
+    # 3. Check for Delivery & Shipping
     f_status = o.get("orderFulfillmentStatus", "NOT_STARTED")
     instructions = o.get("fulfillmentStartInstructions", [])
     has_tracking = False
@@ -957,7 +957,7 @@ if "Orders &" in selected_page:
 
 
 # ==========================================================
-# PAGE B: SALES & REVENUE REPORTS (100% ACCURATE SELLER HUB EARNINGS)
+# PAGE B: SALES & REVENUE REPORTS (EXACT AD FEE & SELLER HUB DEDUCTIONS)
 # ==========================================================
 elif selected_page == "📈 Sales & Revenue Reports":
     st.markdown(
@@ -969,7 +969,7 @@ elif selected_page == "📈 Sales & Revenue Reports":
     """,
         unsafe_allow_html=True,
     )
-    st.caption("Exact Order Earnings matching eBay Seller Hub Order Page (All Selling Fees, Taxes, and Refunds Deducted).")
+    st.caption("Exact Order Earnings matching eBay Seller Hub (Item Subtotal + Shipping - All Final Value & Ad Fees General - Taxes - Refunds).")
 
     if not accessible_stores:
         st.info("👋 Welcome! Your store is not connected yet.")
@@ -1042,36 +1042,40 @@ elif selected_page == "📈 Sales & Revenue Reports":
                 
                 pricing = o.get("pricingSummary", {})
                 
-                # 1. Subtotal (Items gross price)
+                # 1. Subtotal (Items Gross Price)
                 subtotal_obj = pricing.get("priceSubtotal", {})
                 if not subtotal_obj:
                     subtotal_obj = pricing.get("subtotal", {})
                 amount_subtotal = float(subtotal_obj.get("value", 0.0))
                 currency_code = subtotal_obj.get("currency", currency_code)
 
-                # 2. Shipping amount paid by buyer
+                # 2. Shipping Charged to Buyer
                 delivery_cost_obj = pricing.get("deliveryCost", {})
                 delivery_cost = float(delivery_cost_obj.get("value", 0.0))
 
-                # 3. Aggregate ALL Selling & Ad Fees across the order
+                # 3. Comprehensive Fee Deductions (Final Value Fee + Promoted Ad Fee General + Payment Fee)
                 total_fees = 0.0
                 
-                # Order-level marketplace fees
+                # A. Order level marketplace fee
                 order_fee_obj = o.get("totalMarketplaceFee", {})
                 total_fees += float(order_fee_obj.get("value", 0.0))
                 
-                # Line item level marketplace & Promoted ad fees
+                # B. Item Level Marketplace & Promoted Listing Ad Fees (General/Advanced)
                 for li in o.get("lineItems", []):
+                    # Direct marketplace fees
                     for fee in li.get("marketplaceFees", []):
                         total_fees += float(fee.get("amount", {}).get("value", 0.0))
-                
-                # Payment level fee details (Final Value Fee, Regulatory Fee, International Fee)
+                    # Item-level promotions / ad fees
+                    for promo in li.get("appliedPromotions", []):
+                        total_fees += float(promo.get("discountAmount", {}).get("value", 0.0))
+
+                # C. Payment Summary Level Fee Breakdown (Regulatory, Final Value, Ad Fee General)
                 payment_summary = o.get("paymentSummary", {})
                 for p in payment_summary.get("payments", []):
                     for fd in p.get("feeDetails", []):
                         total_fees += float(fd.get("amount", {}).get("value", 0.0))
 
-                # 4. Refunds & returns
+                # 4. Refunds & Returns Deductions
                 refunds_list = payment_summary.get("refunds", [])
                 refund_amount = 0.0
                 for r in refunds_list:
@@ -1080,14 +1084,11 @@ elif selected_page == "📈 Sales & Revenue Reports":
                     except Exception:
                         pass
 
-                # 5. Exact Order Earnings Calculation
-                total_due_seller_obj = payment_summary.get("totalDueSeller", {})
-                if total_due_seller_obj and "value" in total_due_seller_obj:
-                    order_earnings = round(float(total_due_seller_obj.get("value", 0.0)), 2)
-                else:
-                    # Seller Hub Formula: (Item Subtotal + Shipping Paid by Buyer) - Selling Fees - Refunds
-                    gross_sales_base = amount_subtotal + delivery_cost
-                    order_earnings = round(max(0.0, gross_sales_base - total_fees - refund_amount), 2)
+                # 5. Exact Order Earnings Mapping
+                # Base Pool = Items Price + Shipping Paid by Buyer
+                # Net Payout = Base Pool - All Selling & Ad Fees - Refunds
+                gross_seller_pool = amount_subtotal + delivery_cost
+                order_earnings = round(max(0.0, gross_seller_pool - total_fees - refund_amount), 2)
 
                 status_raw, status_badge = get_clean_order_status(o)
 
