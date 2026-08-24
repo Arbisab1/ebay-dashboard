@@ -420,7 +420,7 @@ def get_clean_order_status(o):
 # --- INITIALIZE DATABASE ---
 stores = load_json(STORES_FILE, {})
 users_db = load_json(USERS_FILE, {})
-templates = load_json(TEMPLATES_FILE, DEFAULT_TEMPLATES)
+templates = load_json(TEMPLATES_FILE, DEFAULTTEMPLATES := DEFAULT_TEMPLATES)
 logs = load_json(LOGS_FILE, {})
 
 if "logged_in" not in st.session_state:
@@ -954,7 +954,7 @@ if "Orders &" in selected_page:
 
 
 # ==========================================================
-# PAGE B: SALES & REVENUE REPORTS (WITH AD RATE % & EXACT EARNINGS)
+# PAGE B: SALES & REVENUE REPORTS (AD RATE % DEDUCTION)
 # ==========================================================
 elif selected_page == "📈 Sales & Revenue Reports":
     st.markdown(
@@ -966,7 +966,7 @@ elif selected_page == "📈 Sales & Revenue Reports":
     """,
         unsafe_allow_html=True,
     )
-    st.caption("Exact Order Earnings matching eBay Seller Hub with Promoted Listing Ad Rate (%) tracking.")
+    st.caption("Exact Order Earnings calculated by deducting Promoted Listings Ad Rate (%) and Final Value Fees from Gross.")
 
     if not accessible_stores:
         st.info("👋 Welcome! Your store is not connected yet.")
@@ -1050,54 +1050,64 @@ elif selected_page == "📈 Sales & Revenue Reports":
                 delivery_cost_obj = pricing.get("deliveryCost", {})
                 delivery_cost = float(delivery_cost_obj.get("value", 0.0))
 
-                # 3. Track All Fees & Ad Percentage Details
-                total_fees = 0.0
-                ad_fee_amount = 0.0
-                ad_percentage_val = 0.0
-                
-                # Order level marketplace fee
+                # 3. Base eBay Final Value Fees (Standard)
+                ebay_base_fees = 0.0
                 order_fee_obj = o.get("totalMarketplaceFee", {})
-                total_fees += float(order_fee_obj.get("value", 0.0))
-                
-                # Item Level Marketplace & Promoted Listing Ad Fees
+                ebay_base_fees += float(order_fee_obj.get("value", 0.0))
+
+                # 4. Extract Ad Rate Percentage & Calculate Direct Ad Fee
+                ad_percentage_val = 0.0
+                ad_fee_found = 0.0
+
                 for li in o.get("lineItems", []):
+                    # Check direct ad fee in line item fees
                     for fee in li.get("marketplaceFees", []):
-                        fee_val = float(fee.get("amount", {}).get("value", 0.0))
-                        fee_type = fee.get("feeType", "").upper()
-                        total_fees += fee_val
-                        if "AD" in fee_type or "PROMOTED" in fee_type:
-                            ad_fee_amount += fee_val
-                    
-                    # Inspect promotion discount/percentage
+                        f_val = float(fee.get("amount", {}).get("value", 0.0))
+                        f_type = fee.get("feeType", "").upper()
+                        if "AD" in f_type or "PROMOTED" in f_type:
+                            ad_fee_found += f_val
+                        else:
+                            ebay_base_fees += f_val
+
+                    # Check promotions block
                     for promo in li.get("appliedPromotions", []):
                         disc_val = float(promo.get("discountAmount", {}).get("value", 0.0))
-                        total_fees += disc_val
-                        ad_fee_amount += disc_val
+                        if disc_val > 0:
+                            ad_fee_found += disc_val
                         
-                        # Extract percentage if provided by eBay
-                        pct_text = promo.get("promotionRate", promo.get("rate", promo.get("percentage", 0.0)))
+                        # Parse rate percentage
+                        rate_raw = promo.get("promotionRate", promo.get("rate", promo.get("percentage", 0.0)))
                         try:
-                            ad_percentage_val = max(ad_percentage_val, float(str(pct_text).replace("%", "").strip()))
+                            rate_clean = float(str(rate_raw).replace("%", "").strip())
+                            ad_percentage_val = max(ad_percentage_val, rate_clean)
                         except Exception:
                             pass
 
-                # Payment Summary Level Fee Breakdown (Regulatory, Final Value, Ad Fee General)
+                # Inspect Payment Breakdown for Ad Fees
                 payment_summary = o.get("paymentSummary", {})
                 for p in payment_summary.get("payments", []):
                     for fd in p.get("feeDetails", []):
                         f_amt = float(fd.get("amount", {}).get("value", 0.0))
                         f_type = fd.get("feeType", "").upper()
-                        total_fees += f_amt
                         if "AD" in f_type or "PROMOTED" in f_type:
-                            ad_fee_amount += f_amt
+                            ad_fee_found += f_amt
+                        else:
+                            ebay_base_fees += f_amt
 
-                # Compute Ad Rate Percentage if not explicitly in promo (Ad Fee / Subtotal * 100)
-                if ad_percentage_val == 0.0 and amount_subtotal > 0 and ad_fee_amount > 0:
-                    ad_percentage_val = round((ad_fee_amount / amount_subtotal) * 100, 1)
+                # If Ad percentage is set (e.g. 2.0%) or fee found:
+                if ad_percentage_val > 0.0:
+                    calculated_ad_fee = (amount_subtotal * (ad_percentage_val / 100.0))
+                    ad_fee_amount = max(ad_fee_found, calculated_ad_fee)
+                else:
+                    if ad_fee_found > 0.0 and amount_subtotal > 0.0:
+                        ad_percentage_val = round((ad_fee_found / amount_subtotal) * 100.0, 1)
+                        ad_fee_amount = ad_fee_found
+                    else:
+                        ad_fee_amount = 0.0
 
                 ad_rate_str = f"{ad_percentage_val:.1f}%" if ad_percentage_val > 0 else "0.0% (Organic)"
 
-                # 4. Refunds & Returns Deductions
+                # 5. Refunds & Returns Deductions
                 refunds_list = payment_summary.get("refunds", [])
                 refund_amount = 0.0
                 for r in refunds_list:
@@ -1106,9 +1116,10 @@ elif selected_page == "📈 Sales & Revenue Reports":
                     except Exception:
                         pass
 
-                # 5. Exact Order Earnings (Seller Hub Calculation)
-                gross_seller_pool = amount_subtotal + delivery_cost
-                order_earnings = round(max(0.0, gross_seller_pool - total_fees - refund_amount), 2)
+                # 6. Final Order Earnings Calculation
+                gross_pool = amount_subtotal + delivery_cost
+                total_all_deductions = ebay_base_fees + ad_fee_amount + refund_amount
+                order_earnings = round(max(0.0, gross_pool - total_all_deductions), 2)
 
                 status_raw, status_badge = get_clean_order_status(o)
 
