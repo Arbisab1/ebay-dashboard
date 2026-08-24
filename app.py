@@ -459,6 +459,8 @@ if not st.session_state.logged_in:
             with st.form("direct_login_form"):
                 uname = st.text_input("Username").strip()
                 pword = st.text_input("Password", type="password").strip()
+                
+                # Sign In Button moved inside the form below inputs
                 submit_btn = st.form_submit_button(
                     "Sign In", use_container_width=True, type="primary"
                 )
@@ -498,6 +500,8 @@ if not st.session_state.logged_in:
                 new_u = st.text_input("Choose Username:").strip()
                 new_p = st.text_input("Choose Password:", type="password").strip()
                 store_label = st.text_input("Your eBay Store Name / Alias:").strip()
+                
+                # Signup Button moved inside the form below inputs
                 signup_btn = st.form_submit_button(
                     "Create Account & Continue", use_container_width=True, type="primary"
                 )
