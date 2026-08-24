@@ -1,6 +1,5 @@
 import base64
 from datetime import datetime, timezone
-import hashlib
 import json
 import os
 import time
@@ -23,7 +22,6 @@ RUNAME = st.secrets.get(
 )
 
 STORES_FILE = "connected_stores.json"
-USERS_FILE = "users_db.json"
 TEMPLATES_FILE = "custom_templates.json"
 LOGS_FILE = "message_logs.json"
 
@@ -34,100 +32,9 @@ AUTH_URL = (
 )
 
 st.set_page_config(
-    page_title="eBay Automation Cloud Portal",
+    page_title="eBay Multi-Store Manager & Smart Bot",
     layout="wide",
-    page_icon="💼",
-    initial_sidebar_state="expanded",
-)
-
-# --- CLEAN MODERN CORPORATE SAAS THEME (LIGHT MODE) ---
-st.markdown(
-    """
-<style>
-    /* Main Background & Text */
-    .stApp {
-        background-color: #F8FAFC !important;
-        color: #0F172A !important;
-        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif !important;
-    }
-
-    /* Top Spacing */
-    .block-container {
-        padding-top: 2rem !important;
-        padding-bottom: 2.5rem !important;
-    }
-
-    /* Metric Cards */
-    div[data-testid="stMetric"] {
-        background-color: #FFFFFF !important;
-        border: 1px solid #E2E8F0 !important;
-        border-radius: 10px !important;
-        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05) !important;
-        padding: 16px 20px !important;
-    }
-
-    div[data-testid="stMetricValue"] {
-        font-size: 1.85rem !important;
-        font-weight: 700 !important;
-        color: #2563EB !important; /* Professional Royal Blue */
-    }
-
-    /* Primary Corporate Buttons */
-    button[kind="primary"] {
-        background-color: #2563EB !important;
-        color: #FFFFFF !important;
-        font-weight: 600 !important;
-        border: none !important;
-        border-radius: 8px !important;
-        box-shadow: 0 1px 2px rgba(37, 99, 235, 0.2) !important;
-        transition: all 0.2s ease !important;
-    }
-
-    button[kind="primary"]:hover {
-        background-color: #1D4ED8 !important;
-        box-shadow: 0 4px 6px -1px rgba(37, 99, 235, 0.3) !important;
-    }
-
-    /* Secondary Buttons */
-    button[kind="secondary"] {
-        background-color: #FFFFFF !important;
-        border: 1px solid #CBD5E1 !important;
-        color: #334155 !important;
-        border-radius: 8px !important;
-        font-weight: 500 !important;
-    }
-
-    button[kind="secondary"]:hover {
-        background-color: #F1F5F9 !important;
-        border-color: #94A3B8 !important;
-    }
-
-    /* Expander Container */
-    .streamlit-expanderHeader {
-        background-color: #FFFFFF !important;
-        border: 1px solid #E2E8F0 !important;
-        border-radius: 8px !important;
-        color: #1E293B !important;
-        font-weight: 600 !important;
-        box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03) !important;
-    }
-
-    /* Inputs, Selectboxes, Textareas */
-    div[data-baseweb="select"], div[data-baseweb="input"], textarea {
-        background-color: #FFFFFF !important;
-        border-color: #CBD5E1 !important;
-        color: #0F172A !important;
-        border-radius: 8px !important;
-    }
-
-    /* Sidebar Clean Styling */
-    section[data-testid="stSidebar"] {
-        background-color: #FFFFFF !important;
-        border-right: 1px solid #E2E8F0 !important;
-    }
-</style>
-""",
-    unsafe_allow_html=True,
+    page_icon="⚡",
 )
 
 DEFAULT_TEMPLATES = {
@@ -159,10 +66,6 @@ DEFAULT_TEMPLATES = {
 
 
 # --- PERSISTENCE HELPERS ---
-def hash_pass(password):
-    return hashlib.sha256(password.encode()).hexdigest()
-
-
 def load_json(filepath, default):
     if os.path.exists(filepath):
         try:
@@ -183,16 +86,7 @@ def save_json(filepath, data):
         json.dump(data, f, indent=4)
 
 
-DEFAULT_USERS = {
-    "admin": {
-        "password": hash_pass("admin123"),
-        "role": "admin",
-        "assigned_stores": ["ALL"],
-    }
-}
-
-
-# --- AUTH & API HELPERS ---
+# --- AUTH HELPERS ---
 def clean_auth_code(input_str):
     raw = input_str.strip()
     if "code=" in raw:
@@ -242,6 +136,7 @@ def get_fresh_token(refresh_token):
     return None
 
 
+# --- EBAY API ACTIONS ---
 def fetch_all_ebay_orders(access_token):
     headers = {
         "Authorization": f"Bearer {access_token}",
@@ -366,517 +261,332 @@ def get_clean_order_status(o):
         return "NEW", "🆕 New Order"
 
 
-# --- INITIALIZE DATABASE ---
+# --- INITIAL DATA ---
 stores = load_json(STORES_FILE, {})
-users_db = load_json(USERS_FILE, DEFAULT_USERS)
 templates = load_json(TEMPLATES_FILE, DEFAULT_TEMPLATES)
 logs = load_json(LOGS_FILE, {})
 
-if "logged_in" not in st.session_state:
-    st.session_state.logged_in = False
-    st.session_state.username = None
-    st.session_state.role = None
-    st.session_state.assigned_stores = []
+# --- MAIN DASHBOARD HEADER ---
+st.title("⚡ eBay Multi-Store Manager & Bot Dashboard")
 
-
-# ==========================================================
-# 1. CLEAN MODERN LOGIN SCREEN
-# ==========================================================
-if not st.session_state.logged_in:
-    c1, c2, c3 = st.columns([1, 1.5, 1])
-    with c2:
-        st.markdown(
-            """
-        <div style="text-align: center; padding: 24px 20px; background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 12px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05); margin-bottom: 20px;">
-            <div style="font-size: 2rem; margin-bottom: 4px;">💼</div>
-            <h2 style="margin: 0; color: #0F172A; font-weight: 700;">eBay Cloud Hub</h2>
-            <p style="margin-top: 4px; color: #64748B; font-size: 0.9rem;">Enterprise Multi-Account Automation Platform</p>
-        </div>
-        """,
-            unsafe_allow_html=True,
-        )
-
-        with st.form("login_form"):
-            uname = st.text_input("Username")
-            pword = st.text_input("Password", type="password")
-            st.write("")
-            submit_btn = st.form_submit_button(
-                "Sign In",
-                use_container_width=True,
-                type="primary",
-            )
-
-            if submit_btn:
-                if (
-                    uname in users_db
-                    and users_db[uname]["password"] == hash_pass(pword)
-                ):
-                    st.session_state.logged_in = True
-                    st.session_state.username = uname
-                    st.session_state.role = users_db[uname]["role"]
-                    st.session_state.assigned_stores = users_db[uname].get(
-                        "assigned_stores", []
-                    )
-                    st.success(f"Welcome back, {uname}!")
-                    st.rerun()
-                else:
-                    st.error("Invalid username or password.")
-    st.stop()
-
-
-# ==========================================================
-# 2. LOGGED IN CORPORATE SAAS DASHBOARD
-# ==========================================================
-
-if st.session_state.role == "admin":
-    accessible_stores = stores
-else:
-    accessible_stores = {
-        k: v
-        for k, v in stores.items()
-        if k in st.session_state.assigned_stores
-    }
-
-# --- SIDEBAR ---
+# --- SIDEBAR: LINK & MANAGE STORES ---
 with st.sidebar:
-    st.markdown(
-        """
-    <div style="padding: 10px 0 14px 0; border-bottom: 1px solid #E2E8F0; margin-bottom: 15px;">
-        <span style="font-size: 1.25rem; color: #0F172A; font-weight: 700;">💼 eBay Hub</span>
-    </div>
-    """,
-        unsafe_allow_html=True,
-    )
-    st.markdown(
-        f"**User:** `{st.session_state.username}`  \n**Role:** `{st.session_state.role.upper()}`"
-    )
+    st.header("➕ Link eBay Account")
+    st.markdown(f"[🔗 **Link eBay Store**]({AUTH_URL})")
+    st.caption("Authorization URL paste karein:")
+    redirect_input = st.text_input("Redirected URL / Code:")
+    store_alias = st.text_input("Store Name:")
 
-    if st.button("Logout", use_container_width=True, type="secondary"):
-        st.session_state.logged_in = False
-        st.session_state.username = None
-        st.session_state.role = None
-        st.session_state.assigned_stores = []
-        st.rerun()
+    if st.button("Save Store"):
+        if redirect_input and store_alias:
+            final_code = clean_auth_code(redirect_input)
+            status, token_data = exchange_code_for_tokens(final_code)
 
-    st.divider()
-    st.markdown("##### Navigation")
+            if status == 200 and "access_token" in token_data:
+                stores[store_alias] = {
+                    "access_token": token_data["access_token"],
+                    "refresh_token": token_data.get("refresh_token", ""),
+                }
+                save_json(STORES_FILE, stores)
+                st.success(f"Store '{store_alias}' Linked!")
+                st.rerun()
+            else:
+                st.error("Authentication Failed.")
+        else:
+            st.warning("All fields are required.")
 
-    nav_options = [
-        "📊 Orders & Auto-Messaging",
-        "➕ Store Management",
-        "📝 Template Settings",
-    ]
-    if st.session_state.role == "admin":
-        nav_options.append("👥 User Access Control")
-
-    selected_page = st.radio("Menu", nav_options, label_visibility="collapsed")
-    st.divider()
-    st.caption("🔒 Verified eBay REST API Partner")
-
-
-# ==========================================================
-# PAGE 1: ORDERS & MESSAGING HUB
-# ==========================================================
-if selected_page == "📊 Orders & Auto-Messaging":
-    st.markdown("## 📊 Orders & Messaging Control")
-    st.caption("Sync live store orders, apply smart fulfillment filters, and dispatch customer updates.")
-
-    if not accessible_stores:
-        st.warning(
-            "No stores are currently linked or assigned. Please link an account in **'Store Management'**."
+    if stores:
+        st.divider()
+        st.header("🗑️ Unlink / Delete Store")
+        store_to_remove = st.selectbox(
+            "Select Store to Delete:", list(stores.keys()), key="store_to_del"
         )
-    else:
-        active_store_name = st.selectbox(
-            "Select Store Channel:", list(accessible_stores.keys())
+        if st.button(
+            f"❌ Delete {store_to_remove}", type="secondary", key="del_btn"
+        ):
+            del stores[store_to_remove]
+            save_json(STORES_FILE, stores)
+            st.success(f"Store '{store_to_remove}' has been removed!")
+            st.rerun()
+
+if not stores:
+    st.info(
+        "Filhal koi store link nahi hai. Sidebar say apna store connect karein."
+    )
+else:
+    main_tabs = st.tabs(["🏬 Orders & Smart Filters", "📝 Customize Templates"])
+
+    # --- TAB 2: TEMPLATES MANAGER ---
+    with main_tabs[1]:
+        st.subheader("📝 Customize Message Templates")
+        selected_tpl_edit = st.selectbox(
+            "Select Template to Edit:",
+            list(templates.keys()),
+            key="tpl_edit_select",
         )
-        tokens = accessible_stores[active_store_name]
+        tpl_body = st.text_area(
+            "Template Content:",
+            value=templates[selected_tpl_edit],
+            height=150,
+            key=f"editor_{selected_tpl_edit}",
+        )
+        if st.button("💾 Save Template"):
+            templates[selected_tpl_edit] = tpl_body
+            save_json(TEMPLATES_FILE, templates)
+            st.success("Template Saved Successfully!")
+            st.rerun()
 
-        c_sync, _ = st.columns([1.5, 3])
-        with c_sync:
-            if st.button(
-                f"🔄 Sync Orders ({active_store_name})",
-                type="primary",
-                use_container_width=True,
-            ):
-                with st.spinner("Fetching orders from eBay API..."):
-                    all_orders = fetch_all_ebay_orders(tokens["access_token"])
-                    if not all_orders and tokens.get("refresh_token"):
-                        new_t = get_fresh_token(tokens["refresh_token"])
-                        if new_t:
-                            stores[active_store_name]["access_token"] = new_t
-                            save_json(STORES_FILE, stores)
-                            all_orders = fetch_all_ebay_orders(new_t)
+    # --- TAB 1: STORE ORDERS & SMART MESSAGING ---
+    with main_tabs[0]:
+        store_tabs = st.tabs(list(stores.keys()))
 
-                    st.session_state[f"orders_{active_store_name}"] = all_orders
-                    st.success(f"Synced {len(all_orders)} orders successfully!")
+        for idx, (name, tokens) in enumerate(stores.items()):
+            with store_tabs[idx]:
+                col_title, col_del = st.columns([3, 1])
+                with col_title:
+                    st.subheader(f"🏪 Active Store: {name}")
+                with col_del:
+                    if st.button(
+                        f"🗑️ Remove {name}",
+                        key=f"del_tab_{name}",
+                        help="Unlink this store",
+                    ):
+                        del stores[name]
+                        save_json(STORES_FILE, stores)
+                        st.success(f"Store '{name}' unlinked!")
+                        st.rerun()
 
-        orders = st.session_state.get(f"orders_{active_store_name}", [])
-
-        if orders:
-            st.divider()
-
-            col_filter, col_template = st.columns([2, 2])
-
-            filter_options = [
-                "🆕 Brand New Orders (Unfulfilled)",
-                "🚚 Shipped Orders (In-Transit)",
-                "📦 Delivered Orders",
-                "❌ Cancelled Orders",
-                "📋 All Orders",
-            ]
-            with col_filter:
-                status_filter = st.selectbox("Target Filter Group:", filter_options)
-
-            target_tpl_name = "Brand New Order Welcome"
-            if "Shipped" in status_filter:
-                target_tpl_name = "Shipped Notification"
-            elif "Delivered" in status_filter:
-                target_tpl_name = "Delivered Feedback"
-            elif "Cancelled" in status_filter:
-                target_tpl_name = "Order Cancellation Notice"
-
-            default_tpl_index = get_template_index(templates, target_tpl_name)
-
-            with col_template:
-                chosen_template = st.selectbox(
-                    "Active Message Template:",
-                    list(templates.keys()),
-                    index=default_tpl_index,
-                )
-
-            display_orders = []
-            for o in orders:
-                order_type, _ = get_clean_order_status(o)
-
-                if status_filter == "📋 All Orders":
-                    display_orders.append(o)
-                elif status_filter == "❌ Cancelled Orders":
-                    if order_type == "CANCELLED":
-                        display_orders.append(o)
-                elif status_filter == "🆕 Brand New Orders (Unfulfilled)":
-                    if order_type == "NEW":
-                        display_orders.append(o)
-                elif status_filter == "🚚 Shipped Orders (In-Transit)":
-                    if order_type == "SHIPPED":
-                        display_orders.append(o)
-                elif status_filter == "📦 Delivered Orders":
-                    if order_type == "DELIVERED":
-                        display_orders.append(o)
-
-            m1, m2, m3 = st.columns(3)
-            m1.metric("Total Synced", len(orders))
-            m2.metric("Filtered Matches", len(display_orders))
-            m3.metric("Template Selected", chosen_template)
-
-            st.write("")
-
-            if st.button(
-                f"🚀 Send '{chosen_template}' to All ({len(display_orders)}) Matched Orders",
-                type="primary",
-            ):
-                progress_bar = st.progress(0)
-                sent_count = 0
-
-                for i, o in enumerate(display_orders):
-                    order_id = o.get("orderId", "")
-                    buyer = o.get("buyer", {}).get("username", "Buyer")
-                    line_items = o.get("lineItems", [])
-                    item_id = (
-                        line_items[0].get("legacyItemId")
-                        if line_items
-                        else None
-                    )
-
-                    tracking_num = "Uploaded on eBay"
-                    carrier_name = "Standard Courier"
-
-                    for inst in o.get("fulfillmentStartInstructions", []):
-                        step = inst.get("shippingStep", {})
-                        track_info = step.get("shipmentTracking", {}).get(
-                            "trackingNumber"
-                        )
-                        carrier_info = step.get("shippingCarrierCode")
-                        if track_info:
-                            tracking_num = track_info
-                        if carrier_info:
-                            carrier_name = carrier_info
-
-                    msg_body = templates[chosen_template].format(
-                        buyer=buyer,
-                        order_id=order_id,
-                        tracking_number=tracking_num,
-                        carrier=carrier_name,
-                    )
-
-                    if item_id:
-                        success = send_ebay_message(
-                            tokens["access_token"], item_id, buyer, msg_body
-                        )
-                        if success:
-                            sent_count += 1
-                            logs[f"{order_id}_{chosen_template}"] = {
-                                "buyer": buyer,
-                                "status": "Sent",
-                                "time": datetime.now().strftime(
-                                    "%Y-%m-%d %H:%M:%S"
-                                ),
-                            }
-
-                    time.sleep(0.3)
-                    progress_bar.progress((i + 1) / len(display_orders))
-
-                save_json(LOGS_FILE, logs)
-                st.success(
-                    f"✅ {sent_count}/{len(display_orders)} messages successfully dispatched!"
-                )
-
-            st.divider()
-            st.markdown("### 📋 Order List & Message Customizer")
-
-            for o in display_orders:
-                order_id = o.get("orderId", "")
-                buyer = o.get("buyer", {}).get("username", "Buyer")
-                line_items = o.get("lineItems", [])
-                item_title = (
-                    line_items[0].get("title", "Item") if line_items else ""
-                )
-                item_id = (
-                    line_items[0].get("legacyItemId", "N/A")
-                    if line_items
-                    else "N/A"
-                )
-
-                _, clean_badge = get_clean_order_status(o)
-
-                tracking_num = "Uploaded on eBay"
-                carrier_name = "Courier"
-
-                for inst in o.get("fulfillmentStartInstructions", []):
-                    step = inst.get("shippingStep", {})
-                    track_info = step.get("shipmentTracking", {}).get(
-                        "trackingNumber"
-                    )
-                    carrier_info = step.get("shippingCarrierCode")
-                    if track_info:
-                        tracking_num = track_info
-                    if carrier_info:
-                        carrier_name = carrier_info
-
-                formatted_preview = templates[chosen_template].format(
-                    buyer=buyer,
-                    order_id=order_id,
-                    tracking_number=tracking_num,
-                    carrier=carrier_name,
-                )
-
-                log_key = f"{order_id}_{chosen_template}"
-                is_sent = log_key in logs
-
-                with st.expander(
-                    f"Order #{order_id} | Buyer: {buyer} | {clean_badge} | {'✅ Sent' if is_sent else '⏳ Ready'}"
+                if st.button(
+                    f"🔄 Sync ALL Orders from eBay ({name})",
+                    key=f"sync_all_{name}",
                 ):
-                    c_det, c_act = st.columns([1.5, 2])
-                    with c_det:
-                        st.write(f"**Item:** {item_title}")
-                        st.write(f"**Item ID:** `{item_id}`")
-                        st.write(f"**Carrier:** `{carrier_name}`")
-                        st.write(f"**Tracking:** `{tracking_num}`")
+                    with st.spinner("Fetching orders from eBay..."):
+                        all_orders = fetch_all_ebay_orders(
+                            tokens["access_token"]
+                        )
+                        if not all_orders and tokens.get("refresh_token"):
+                            new_t = get_fresh_token(tokens["refresh_token"])
+                            if new_t:
+                                stores[name]["access_token"] = new_t
+                                save_json(STORES_FILE, stores)
+                                all_orders = fetch_all_ebay_orders(new_t)
 
-                    with c_act:
-                        user_msg_input = st.text_area(
-                            f"Live Preview ({chosen_template}):",
-                            value=formatted_preview,
-                            height=110,
-                            key=f"input_{order_id}_{chosen_template}_{status_filter}",
+                        st.session_state[f"orders_{name}"] = all_orders
+                        st.success(f"Loaded {len(all_orders)} Orders!")
+
+                orders = st.session_state.get(f"orders_{name}", [])
+
+                if orders:
+                    st.divider()
+                    st.markdown("### 🎯 Order Filter & Smart Auto-Template")
+
+                    col_filter, col_template = st.columns([2, 2])
+
+                    filter_options = [
+                        "🆕 Brand New Orders (Unfulfilled)",
+                        "🚚 Shipped Orders (In-Transit)",
+                        "📦 Delivered Orders",
+                        "❌ Cancelled Orders",
+                        "📋 All Orders",
+                    ]
+                    with col_filter:
+                        status_filter = st.selectbox(
+                            "Select Target Order Status:",
+                            filter_options,
+                            key=f"filter_{name}",
                         )
 
-                        if st.button(
-                            f"✉️ Send Message to {buyer}",
-                            key=f"btn_send_{order_id}_{chosen_template}",
-                            type="secondary",
+                    target_tpl_name = "Brand New Order Welcome"
+                    if "Shipped" in status_filter:
+                        target_tpl_name = "Shipped Notification"
+                    elif "Delivered" in status_filter:
+                        target_tpl_name = "Delivered Feedback"
+                    elif "Cancelled" in status_filter:
+                        target_tpl_name = "Order Cancellation Notice"
+
+                    default_tpl_index = get_template_index(
+                        templates, target_tpl_name
+                    )
+
+                    with col_template:
+                        chosen_template = st.selectbox(
+                            "Select Message Template:",
+                            list(templates.keys()),
+                            index=default_tpl_index,
+                            key=f"tpl_select_{name}",
+                        )
+
+                    display_orders = []
+                    for o in orders:
+                        order_type, _ = get_clean_order_status(o)
+
+                        if status_filter == "📋 All Orders":
+                            display_orders.append(o)
+                        elif status_filter == "❌ Cancelled Orders":
+                            if order_type == "CANCELLED":
+                                display_orders.append(o)
+                        elif (
+                            status_filter
+                            == "🆕 Brand New Orders (Unfulfilled)"
                         ):
-                            if item_id != "N/A":
+                            if order_type == "NEW":
+                                display_orders.append(o)
+                        elif status_filter == "🚚 Shipped Orders (In-Transit)":
+                            if order_type == "SHIPPED":
+                                display_orders.append(o)
+                        elif status_filter == "📦 Delivered Orders":
+                            if order_type == "DELIVERED":
+                                display_orders.append(o)
+
+                    st.info(
+                        f"📊 Selected: **`{status_filter}`** | Template: **`{chosen_template}`** | Orders Found: **{len(display_orders)}**"
+                    )
+
+                    if st.button(
+                        f"🚀 Send '{chosen_template}' to All ({len(display_orders)}) Orders",
+                        key=f"bulk_send_{name}",
+                    ):
+                        progress_bar = st.progress(0)
+                        sent_count = 0
+
+                        for i, o in enumerate(display_orders):
+                            order_id = o.get("orderId", "")
+                            buyer = o.get("buyer", {}).get("username", "Buyer")
+                            line_items = o.get("lineItems", [])
+                            item_id = (
+                                line_items[0].get("legacyItemId")
+                                if line_items
+                                else None
+                            )
+
+                            tracking_num = "Uploaded on eBay"
+                            carrier_name = "Standard Courier"
+
+                            for inst in o.get(
+                                "fulfillmentStartInstructions", []
+                            ):
+                                step = inst.get("shippingStep", {})
+                                track_info = step.get(
+                                    "shipmentTracking", {}
+                                ).get("trackingNumber")
+                                carrier_info = step.get("shippingCarrierCode")
+                                if track_info:
+                                    tracking_num = track_info
+                                if carrier_info:
+                                    carrier_name = carrier_info
+
+                            msg_body = templates[chosen_template].format(
+                                buyer=buyer,
+                                order_id=order_id,
+                                tracking_number=tracking_num,
+                                carrier=carrier_name,
+                            )
+
+                            if item_id:
                                 success = send_ebay_message(
                                     tokens["access_token"],
                                     item_id,
                                     buyer,
-                                    user_msg_input,
+                                    msg_body,
                                 )
                                 if success:
-                                    logs[log_key] = {
+                                    sent_count += 1
+                                    logs[f"{order_id}_{chosen_template}"] = {
                                         "buyer": buyer,
                                         "status": "Sent",
                                         "time": datetime.now().strftime(
                                             "%Y-%m-%d %H:%M:%S"
                                         ),
                                     }
-                                    save_json(LOGS_FILE, logs)
-                                    st.success(f"Sent to {buyer}!")
-                                    st.rerun()
-                                else:
-                                    st.error("Failed to send message.")
 
+                            time.sleep(0.3)
+                            progress_bar.progress(
+                                (i + 1) / len(display_orders)
+                            )
 
-# ==========================================================
-# PAGE 2: STORE MANAGEMENT
-# ==========================================================
-elif selected_page == "➕ Store Management":
-    st.markdown("## ➕ Store Management")
-    st.caption("Authenticate new eBay accounts via OAuth or manage existing store integrations.")
+                        save_json(LOGS_FILE, logs)
+                        st.success(
+                            f"✅ {sent_count}/{len(display_orders)} messages dispatched!"
+                        )
 
-    c_link, c_manage = st.columns([1.2, 1])
+                    st.divider()
+                    st.markdown("### 📦 Orders Preview & Individual Control")
 
-    with c_link:
-        st.markdown("### 🔗 Authorize New Store")
-        st.info("Step 1: Click the authorization link below to authenticate with eBay:")
-        st.markdown(f"👉 [**Authorize with eBay (Click Here)**]({AUTH_URL})")
-        st.write("")
+                    for o in display_orders:
+                        order_id = o.get("orderId", "")
+                        buyer = o.get("buyer", {}).get("username", "Buyer")
+                        line_items = o.get("lineItems", [])
+                        item_title = (
+                            line_items[0].get("title", "Item")
+                            if line_items
+                            else ""
+                        )
+                        item_id = (
+                            line_items[0].get("legacyItemId", "N/A")
+                            if line_items
+                            else "N/A"
+                        )
 
-        redirect_input = st.text_input("Redirected URL / Code:")
-        store_alias = st.text_input("Store Label (e.g. ASA Deals UK):")
+                        _, clean_badge = get_clean_order_status(o)
 
-        if st.button("Complete Authorization", type="primary"):
-            if redirect_input and store_alias:
-                final_code = clean_auth_code(redirect_input)
-                status, token_data = exchange_code_for_tokens(final_code)
+                        tracking_num = "Uploaded on eBay"
+                        carrier_name = "Courier"
 
-                if status == 200 and "access_token" in token_data:
-                    stores[store_alias] = {
-                        "access_token": token_data["access_token"],
-                        "refresh_token": token_data.get("refresh_token", ""),
-                    }
-                    save_json(STORES_FILE, stores)
-                    st.success(f"Store '{store_alias}' linked successfully!")
-                    st.rerun()
-                else:
-                    st.error("Authentication failed. Please verify code/URL.")
-            else:
-                st.warning("All fields are required.")
+                        for inst in o.get("fulfillmentStartInstructions", []):
+                            step = inst.get("shippingStep", {})
+                            track_info = step.get(
+                                "shipmentTracking", {}
+                            ).get("trackingNumber")
+                            carrier_info = step.get("shippingCarrierCode")
+                            if track_info:
+                                tracking_num = track_info
+                            if carrier_info:
+                                carrier_name = carrier_info
 
-    with c_manage:
-        st.markdown("### 🏬 Connected Stores")
-        if not accessible_stores:
-            st.info("No stores linked yet.")
-        else:
-            for s_name in list(accessible_stores.keys()):
-                with st.container():
-                    st.markdown(
-                        f"""
-                    <div style="padding: 12px 16px; background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 8px; margin-bottom: 10px;">
-                        <strong style="font-size: 1.05rem; color: #0F172A;">🏪 {s_name}</strong><br>
-                        <span style="color: #16A34A; font-size: 0.85rem; font-weight: 500;">● Connected & Active</span>
-                    </div>
-                    """,
-                        unsafe_allow_html=True,
-                    )
-                    if st.button(
-                        f"🗑️ Delete {s_name}",
-                        key=f"del_store_page_{s_name}",
-                        type="secondary",
-                    ):
-                        del stores[s_name]
-                        save_json(STORES_FILE, stores)
-                        st.success(f"Store '{s_name}' removed!")
-                        st.rerun()
+                        formatted_preview = templates[chosen_template].format(
+                            buyer=buyer,
+                            order_id=order_id,
+                            tracking_number=tracking_num,
+                            carrier=carrier_name,
+                        )
 
+                        log_key = f"{order_id}_{chosen_template}"
+                        is_sent = log_key in logs
 
-# ==========================================================
-# PAGE 3: TEMPLATE SETTINGS
-# ==========================================================
-elif selected_page == "📝 Template Settings":
-    st.markdown("## 📝 Template Settings")
-    st.caption("Manage personalized messaging templates using dynamic attributes.")
+                        with st.expander(
+                            f"Order #{order_id} | Buyer: {buyer} | {clean_badge} | {'✅ Sent' if is_sent else '⏳ Ready'}"
+                        ):
+                            st.write(f"**Item:** {item_title}")
+                            st.write(f"**Item ID:** `{item_id}`")
 
-    st.markdown(
-        """
-    **Supported Dynamic Variables:**
-    * `{buyer}`: Automatically maps to the customer's eBay username.
-    * `{order_id}`: Replaced with the corresponding Order ID.
-    * `{carrier}`: Carrier name from eBay fulfillment.
-    * `{tracking_number}`: Tracking number uploaded to the order.
-    """
-    )
-    st.divider()
+                            user_msg_input = st.text_area(
+                                f"Message Preview ({chosen_template}):",
+                                value=formatted_preview,
+                                height=120,
+                                key=f"input_{order_id}_{chosen_template}_{status_filter}",
+                            )
 
-    selected_tpl_edit = st.selectbox(
-        "Select Template to Edit:", list(templates.keys())
-    )
-    tpl_body = st.text_area(
-        "Template Content:",
-        value=templates[selected_tpl_edit],
-        height=180,
-        key=f"editor_{selected_tpl_edit}",
-    )
-
-    if st.button("Save Template", type="primary"):
-        templates[selected_tpl_edit] = tpl_body
-        save_json(TEMPLATES_FILE, templates)
-        st.success(f"Template '{selected_tpl_edit}' saved successfully!")
-        st.rerun()
-
-
-# ==========================================================
-# PAGE 4: USER ACCESS CONTROL (ADMIN ONLY)
-# ==========================================================
-elif (
-    selected_page == "👥 User Access Control"
-    and st.session_state.role == "admin"
-):
-    st.markdown("## 👥 User Access Control")
-    st.caption("Create dedicated client accounts and assign store access permissions.")
-
-    c_u1, c_u2 = st.columns([1.2, 1])
-
-    with c_u1:
-        st.markdown("### ➕ Create Client User")
-        new_uname = st.text_input("Username:")
-        new_pword = st.text_input("Password:", type="password")
-        store_choices = list(stores.keys())
-        assigned_store = st.selectbox(
-            "Assign Store:",
-            store_choices if store_choices else ["No stores connected"],
-        )
-
-        if st.button("Create Account", type="primary"):
-            if (
-                new_uname
-                and new_pword
-                and assigned_store != "No stores connected"
-            ):
-                if new_uname in users_db:
-                    st.error("Username already exists!")
-                else:
-                    users_db[new_uname] = {
-                        "password": hash_pass(new_pword),
-                        "role": "client",
-                        "assigned_stores": [assigned_store],
-                    }
-                    save_json(USERS_FILE, users_db)
-                    st.success(f"Account for '{new_uname}' created successfully!")
-                    st.rerun()
-            else:
-                st.warning("All fields are required.")
-
-    with c_u2:
-        st.markdown("### 📋 Active Users")
-        for u, data in users_db.items():
-            with st.container():
-                st.markdown(
-                    f"""
-                <div style="padding: 10px 14px; background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 8px; margin-bottom: 8px;">
-                    <strong>👤 {u}</strong> ({data['role'].upper()})<br>
-                    <small style="color: #64748B;">Assigned: {data.get('assigned_stores')}</small>
-                </div>
-                """,
-                    unsafe_allow_html=True,
-                )
-                if u != "admin":
-                    if st.button(
-                        f"🗑️ Delete User {u}",
-                        key=f"del_user_{u}",
-                        type="secondary",
-                    ):
-                        del users_db[u]
-                        save_json(USERS_FILE, users_db)
-                        st.success(f"User '{u}' removed!")
-                        st.rerun()
+                            if st.button(
+                                f"✉️ Send to {buyer}",
+                                key=f"btn_send_{order_id}_{chosen_template}",
+                            ):
+                                if item_id != "N/A":
+                                    success = send_ebay_message(
+                                        tokens["access_token"],
+                                        item_id,
+                                        buyer,
+                                        user_msg_input,
+                                    )
+                                    if success:
+                                        logs[log_key] = {
+                                            "buyer": buyer,
+                                            "status": "Sent",
+                                            "time": datetime.now().strftime(
+                                                "%Y-%m-%d %H:%M:%S"
+                                            ),
+                                        }
+                                        save_json(LOGS_FILE, logs)
+                                        st.success(f"Sent to {buyer}!")
+                                        st.rerun()
+                                    else:
+                                        st.error("Failed to send message.")
