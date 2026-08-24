@@ -69,7 +69,13 @@ def load_json(filepath, default):
     if os.path.exists(filepath):
         try:
             with open(filepath, "r") as f:
-                return json.load(f)
+                data = json.load(f)
+                if isinstance(default, dict):
+                    # Ensure all default keys exist
+                    for k, v in default.items():
+                        if k not in data:
+                            data[k] = v
+                return data
         except Exception:
             return default
     return default
@@ -180,10 +186,18 @@ def send_ebay_message(access_token, item_id, buyer_username, body_text):
     return "<Ack>Success</Ack>" in res.text or "<Ack>Warning</Ack>" in res.text
 
 
+# Safe index finder
+def get_template_index(tpl_dict, target_key):
+    keys = list(tpl_dict.keys())
+    if target_key in keys:
+        return keys.index(target_key)
+    return 0
+
+
 # --- DASHBOARD HEADER ---
 st.title("⚡ eBay Multi-Store Manager & Bot Dashboard")
 
-# --- SIDEBAR: CONNECT & DELETE STORES ---
+# --- SIDEBAR ---
 stores = load_json(STORES_FILE, {})
 
 with st.sidebar:
@@ -211,7 +225,6 @@ with st.sidebar:
         else:
             st.warning("All fields are required.")
 
-    # --- UNLINK / DELETE STORE OPTION IN SIDEBAR ---
     if stores:
         st.divider()
         st.header("🗑️ Unlink / Delete Store")
@@ -269,7 +282,7 @@ else:
                     if st.button(
                         f"🗑️ Remove {name}",
                         key=f"del_tab_{name}",
-                        help="Unlink this store from dashboard",
+                        help="Unlink this store",
                     ):
                         del stores[name]
                         save_json(STORES_FILE, stores)
@@ -316,23 +329,18 @@ else:
                             key=f"filter_{name}",
                         )
 
-                    default_tpl_index = 0
-                    if "Brand New" in status_filter:
-                        default_tpl_index = list(templates.keys()).index(
-                            "Brand New Order Welcome"
-                        )
-                    elif "Shipped" in status_filter:
-                        default_tpl_index = list(templates.keys()).index(
-                            "Shipped Notification"
-                        )
+                    # Safe Auto-Select
+                    target_tpl_name = "Brand New Order Welcome"
+                    if "Shipped" in status_filter:
+                        target_tpl_name = "Shipped Notification"
                     elif "Delivered" in status_filter:
-                        default_tpl_index = list(templates.keys()).index(
-                            "Delivered Feedback"
-                        )
+                        target_tpl_name = "Delivered Feedback"
                     elif "Cancelled" in status_filter:
-                        default_tpl_index = list(templates.keys()).index(
-                            "Order Cancellation Notice"
-                        )
+                        target_tpl_name = "Order Cancellation Notice"
+
+                    default_tpl_index = get_template_index(
+                        templates, target_tpl_name
+                    )
 
                     with col_template:
                         chosen_template = st.selectbox(
