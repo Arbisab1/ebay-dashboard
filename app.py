@@ -353,30 +353,30 @@ if "logged_in" not in st.session_state:
 
 
 # ==========================================================
-# 1. SEPARATE AUTHENTICATION PORTALS (ADMIN vs CLIENT)
+# 1. URL PARAMETER ROUTING (SEPARATE LINK HANDLER)
 # ==========================================================
-if not st.session_state.logged_in:
-    c1, c2, c3 = st.columns([1, 1.6, 1])
-    with c2:
-        portal_type = st.radio(
-            "Select Portal:",
-            ["👤 Client Workspace Login", "👑 Master Admin Portal"],
-            horizontal=True,
-        )
+# Read parameters from URL (e.g. ?portal=client or ?portal=admin)
+params = st.query_params
+url_portal = params.get("portal", "").lower()
+preset_client_user = params.get("client", "")
 
-        if portal_type == "👑 Master Admin Portal":
+if not st.session_state.logged_in:
+    c1, c2, c3 = st.columns([1, 1.5, 1])
+    with c2:
+        # If client link (?portal=client or default)
+        if url_portal == "admin":
             st.markdown(
                 """
-            <div style="text-align: center; padding: 20px; background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 12px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05); margin-bottom: 20px;">
+            <div style="text-align: center; padding: 22px; background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 12px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05); margin-bottom: 20px;">
                 <div style="font-size: 2rem;">👑</div>
-                <h3 style="margin: 0; color: #0F172A; font-weight: 700;">Master Admin Login</h3>
-                <p style="margin-top: 4px; color: #64748B; font-size: 0.85rem;">Platform Configuration & Multi-Store Management</p>
+                <h3 style="margin: 0; color: #0F172A; font-weight: 700;">Master Admin Portal</h3>
+                <p style="margin-top: 4px; color: #64748B; font-size: 0.85rem;">Platform Administration & Stores Control</p>
             </div>
             """,
                 unsafe_allow_html=True,
             )
             with st.form("admin_login_form"):
-                admin_u = st.text_input("Admin Username")
+                admin_u = st.text_input("Admin Username", value="admin")
                 admin_p = st.text_input("Admin Password", type="password")
                 submit_admin = st.form_submit_button(
                     "Sign In as Admin", use_container_width=True, type="primary"
@@ -392,15 +392,15 @@ if not st.session_state.logged_in:
                         st.session_state.username = admin_u
                         st.session_state.role = "admin"
                         st.session_state.assigned_stores = ["ALL"]
-                        st.success("Welcome, Master Admin!")
+                        st.success("Admin Authenticated!")
                         st.rerun()
                     else:
-                        st.error("Invalid Master Admin credentials.")
-
+                        st.error("Invalid Admin Credentials.")
         else:
+            # Client Login is the default view or when ?portal=client is used
             st.markdown(
                 """
-            <div style="text-align: center; padding: 20px; background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 12px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05); margin-bottom: 20px;">
+            <div style="text-align: center; padding: 22px; background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 12px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05); margin-bottom: 20px;">
                 <div style="font-size: 2rem;">👤</div>
                 <h3 style="margin: 0; color: #0F172A; font-weight: 700;">Client Store Portal</h3>
                 <p style="margin-top: 4px; color: #64748B; font-size: 0.85rem;">Sign in to access your store's live orders & messaging</p>
@@ -409,10 +409,10 @@ if not st.session_state.logged_in:
                 unsafe_allow_html=True,
             )
             with st.form("client_login_form"):
-                client_u = st.text_input("Username")
+                client_u = st.text_input("Username", value=preset_client_user)
                 client_p = st.text_input("Password", type="password")
                 submit_client = st.form_submit_button(
-                    "Sign In to My Store",
+                    "Sign In to Store",
                     use_container_width=True,
                     type="primary",
                 )
@@ -433,15 +433,14 @@ if not st.session_state.logged_in:
                         st.success(f"Welcome, {client_u}!")
                         st.rerun()
                     else:
-                        st.error("Invalid Client credentials.")
+                        st.error("Invalid Username or Password.")
     st.stop()
 
 
 # ==========================================================
-# 2. LOGGED IN PORTALS (SEPARATED LAYOUTS)
+# 2. LOGGED IN DASHBOARD
 # ==========================================================
 
-# Determine Accessible Stores
 if st.session_state.role == "admin":
     accessible_stores = stores
 else:
@@ -499,7 +498,7 @@ with st.sidebar:
         nav_options = [
             "📊 All Stores Orders & Messaging",
             "➕ Link & Manage eBay Stores",
-            "👥 Client Accounts & Security",
+            "👥 Client Accounts & Links Generator",
             "📝 Global Message Templates",
         ]
     else:
@@ -514,7 +513,7 @@ with st.sidebar:
 
 
 # ==========================================================
-# PAGE A: ORDERS & AUTO-MESSAGING HUB (CLIENT & ADMIN)
+# PAGE A: ORDERS & AUTO-MESSAGING HUB
 # ==========================================================
 if "Orders &" in selected_page:
     st.markdown(f"## 📊 {selected_page}")
@@ -828,14 +827,16 @@ elif (
 
 
 # ==========================================================
-# PAGE C: CLIENT ACCOUNTS & ADMIN SECURITY (ADMIN ONLY)
+# PAGE C: CLIENT ACCOUNTS & LINK GENERATOR (ADMIN ONLY)
 # ==========================================================
 elif (
-    selected_page == "👥 Client Accounts & Security"
+    selected_page == "👥 Client Accounts & Links Generator"
     and st.session_state.role == "admin"
 ):
-    st.markdown("## 👥 Client Accounts & Access Control")
-    st.caption("Create dedicated client accounts and assign store access.")
+    st.markdown("## 👥 Client Accounts & Direct Links Generator")
+    st.caption(
+        "Create dedicated client accounts and copy their personalized portal links."
+    )
 
     c_u1, c_u2 = st.columns([1.2, 1])
 
@@ -897,7 +898,11 @@ elif (
                     st.error("Current admin password is incorrect.")
 
     with c_u2:
-        st.markdown("### 📋 Active Client Logins")
+        st.markdown("### 📋 Client Logins & Custom Links")
+        st.info(
+            "💡 **Tip:** Copy the personalized link below and send it directly to your client."
+        )
+
         for u, data in users_db.items():
             if u != "admin":
                 with st.container():
@@ -910,6 +915,10 @@ elif (
                     """,
                         unsafe_allow_html=True,
                     )
+                    # Generate Direct Client Link
+                    client_direct_link = f"?client={u}"
+                    st.code(client_direct_link, language="text")
+
                     if st.button(
                         f"🗑️ Delete Client {u}",
                         key=f"del_user_{u}",
