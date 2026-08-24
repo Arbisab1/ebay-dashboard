@@ -46,7 +46,7 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-# --- STRICT LIGHT THEME ENFORCER (DARK MODE OVERRIDE) ---
+# --- STRICT LIGHT THEME ENFORCER ---
 st.markdown(
     f"""
 <style>
@@ -73,7 +73,6 @@ st.markdown(
         padding-bottom: 2.5rem !important;
     }}
 
-    /* Metric Cards */
     div[data-testid="stMetric"] {{
         background-color: #FFFFFF !important;
         border: 1px solid #CBD5E1 !important;
@@ -91,7 +90,6 @@ st.markdown(
         font-weight: 600 !important;
     }}
 
-    /* Primary & Secondary Buttons */
     button[kind="primary"] {{
         background-color: #2563EB !important;
         color: #FFFFFF !important;
@@ -114,7 +112,6 @@ st.markdown(
         color: #1E293B !important;
     }}
 
-    /* Expander Container */
     .streamlit-expanderHeader {{
         background-color: #FFFFFF !important;
         border: 1px solid #CBD5E1 !important;
@@ -126,7 +123,6 @@ st.markdown(
         color: #0F172A !important;
     }}
 
-    /* Form Inputs & Dropdowns */
     input, textarea, select, div[data-baseweb="select"] {{
         background-color: #FFFFFF !important;
         color: #0F172A !important;
@@ -139,7 +135,6 @@ st.markdown(
         background-color: #FFFFFF !important;
     }}
 
-    /* Sidebar Clean Styling */
     section[data-testid="stSidebar"] {{
         background-color: #FFFFFF !important;
         border-right: 1px solid #E2E8F0 !important;
@@ -148,7 +143,6 @@ st.markdown(
         color: #0F172A !important;
     }}
 
-    /* Floating WhatsApp Button */
     .floating-whatsapp {{
         position: fixed;
         bottom: 25px;
@@ -212,11 +206,9 @@ DEFAULT_TEMPLATES = {
     ),
 }
 
-
 # --- PERSISTENCE HELPERS ---
 def hash_pass(password):
     return hashlib.sha256(str(password).strip().encode()).hexdigest()
-
 
 def load_json(filepath, default):
     if os.path.exists(filepath):
@@ -232,11 +224,9 @@ def load_json(filepath, default):
             return default
     return default
 
-
 def save_json(filepath, data):
     with open(filepath, "w") as f:
         json.dump(data, f, indent=4)
-
 
 # --- AUTH & API HELPERS ---
 def clean_auth_code(input_str):
@@ -248,7 +238,6 @@ def clean_auth_code(input_str):
             return params["code"][0]
         raw = raw.split("code=")[1].split("&")[0]
     return unquote(raw)
-
 
 def exchange_code_for_tokens(auth_code):
     creds = f"{CLIENT_ID}:{CLIENT_SECRET}"
@@ -269,7 +258,6 @@ def exchange_code_for_tokens(auth_code):
     )
     return res.status_code, res.json()
 
-
 def get_fresh_token(refresh_token):
     creds = f"{CLIENT_ID}:{CLIENT_SECRET}"
     encoded_creds = base64.b64encode(creds.encode()).decode()
@@ -286,7 +274,6 @@ def get_fresh_token(refresh_token):
     if res.status_code == 200:
         return res.json().get("access_token")
     return None
-
 
 @st.cache_data(show_spinner=False, ttl=3600)
 def fetch_all_ebay_orders_cached(access_token, date_filter_str):
@@ -320,7 +307,6 @@ def fetch_all_ebay_orders_cached(access_token, date_filter_str):
             break
     return all_orders
 
-
 def send_ebay_message(access_token, item_id, buyer_username, body_text):
     xml_payload = f"""<?xml version="1.0" encoding="utf-8"?>
     <AddMemberMessageAAQToPartnerRequest xmlns="urn:ebay:apis:eBLBaseComponents">
@@ -344,15 +330,34 @@ def send_ebay_message(access_token, item_id, buyer_username, body_text):
     )
     return "<Ack>Success</Ack>" in res.text or "<Ack>Warning</Ack>" in res.text
 
-
 def get_template_index(tpl_dict, target_key):
     keys = list(tpl_dict.keys())
     if target_key in keys:
         return keys.index(target_key)
     return 0
 
-
+# --- ACCURATE ORDER STATUS DETECTION ---
 def get_clean_order_status(o):
+    # 1. Broad Cancel State Check (Top Priority)
+    cancel_status_obj = o.get("cancelStatus", {})
+    cancel_state = str(cancel_status_obj.get("cancelState", "")).strip().upper()
+    cancel_req = cancel_status_obj.get("cancelRequests", [])
+    
+    # Check item level cancellations
+    line_item_cancelled = False
+    for item in o.get("lineItems", []):
+        item_status = str(item.get("lineItemFulfillmentStatus", "")).upper()
+        if item_status in ["CANCELLED", "CANCELED"]:
+            line_item_cancelled = True
+
+    if (
+        cancel_state in ["CANCELED", "CANCELLED", "CANCEL_REQUESTED", "IN_PROGRESS", "CLOSED"]
+        or len(cancel_req) > 0
+        or line_item_cancelled
+    ):
+        return "CANCELLED", "❌ Cancelled"
+
+    # 2. Refund Check
     payment_summary = o.get("paymentSummary", {})
     refunds_list = payment_summary.get("refunds", [])
     total_refunded_val = 0.0
@@ -362,15 +367,11 @@ def get_clean_order_status(o):
         except Exception:
             pass
 
-    payment_status = o.get("orderPaymentStatus", "").upper()
+    payment_status = str(o.get("orderPaymentStatus", "")).upper()
     if total_refunded_val > 0 or payment_status in ["REFUNDED", "PARTIALLY_REFUNDED"]:
         return "REFUNDED", "💸 Refunded"
 
-    cancel_state = o.get("cancelStatus", {}).get("cancelState", "").strip().upper()
-    cancel_req = o.get("cancelStatus", {}).get("cancelRequests", [])
-    if cancel_state in ["CANCELED", "CANCELLED", "CANCEL_REQUESTED", "IN_PROGRESS"] or len(cancel_req) > 0:
-        return "CANCELLED", "❌ Cancelled"
-
+    # 3. Delivery & Shipping Detection
     f_status = o.get("orderFulfillmentStatus", "NOT_STARTED")
     instructions = o.get("fulfillmentStartInstructions", [])
     has_tracking = False
@@ -416,7 +417,6 @@ def get_clean_order_status(o):
     else:
         return "NEW", "🆕 New Order"
 
-
 # --- INITIALIZE DATABASE ---
 stores = load_json(STORES_FILE, {})
 users_db = load_json(USERS_FILE, {})
@@ -431,7 +431,6 @@ if "logged_in" not in st.session_state:
 
 if "auth_mode" not in st.session_state:
     st.session_state.auth_mode = "signin"
-
 
 # ==========================================================
 # 1. LOGIN & SIGN UP
@@ -529,11 +528,9 @@ if not st.session_state.logged_in:
 
     st.stop()
 
-
 # ==========================================================
 # 2. LOGGED IN DASHBOARD
 # ==========================================================
-
 if st.session_state.role == "admin":
     accessible_stores = stores
 else:
@@ -620,7 +617,6 @@ with st.sidebar:
     selected_page = st.radio("Menu", nav_options, label_visibility="collapsed")
     st.divider()
 
-    # --- SIDEBAR WHATSAPP SUPPORT CARD ---
     st.markdown(
         f"""
     <div style="padding: 12px; background: #F0FDF4; border: 1px solid #BBF7D0; border-radius: 8px; margin-bottom: 10px;">
@@ -639,7 +635,6 @@ with st.sidebar:
         unsafe_allow_html=True,
     )
     st.caption("🔒 Verified eBay REST API Partner")
-
 
 # ==========================================================
 # PAGE A: ORDERS & AUTO-MESSAGING HUB
@@ -815,9 +810,7 @@ if "Orders &" in selected_page:
 
                     for inst in o.get("fulfillmentStartInstructions", []):
                         step = inst.get("shippingStep", {})
-                        track_info = step.get(
-                            "shipmentTracking", {}
-                        ).get("trackingNumber")
+                        track_info = step.get("shipmentTracking", {}).get("trackingNumber")
                         carrier_info = step.get("shippingCarrierCode")
                         if track_info:
                             tracking_num = track_info
@@ -841,9 +834,7 @@ if "Orders &" in selected_page:
                                 logs[f"{order_id}_{chosen_template}"] = {
                                     "buyer": buyer,
                                     "status": "Sent",
-                                    "time": datetime.now().strftime(
-                                        "%Y-%m-%d %H:%M:%S"
-                                    ),
+                                    "time": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
                                 }
                     except Exception:
                         pass
@@ -852,9 +843,7 @@ if "Orders &" in selected_page:
                     progress_bar.progress((i + 1) / len(display_orders))
 
                 save_json(LOGS_FILE, logs)
-                st.success(
-                    f"✅ {sent_count}/{len(display_orders)} messages dispatched!"
-                )
+                st.success(f"✅ {sent_count}/{len(display_orders)} messages dispatched!")
                 time.sleep(1)
                 st.rerun()
 
@@ -865,14 +854,8 @@ if "Orders &" in selected_page:
                 order_id = o.get("orderId", "")
                 buyer = o.get("buyer", {}).get("username", "Buyer")
                 line_items = o.get("lineItems", [])
-                item_title = (
-                    line_items[0].get("title", "Item") if line_items else ""
-                )
-                item_id = (
-                    line_items[0].get("legacyItemId", "N/A")
-                    if line_items
-                    else "N/A"
-                )
+                item_title = line_items[0].get("title", "Item") if line_items else ""
+                item_id = line_items[0].get("legacyItemId", "N/A") if line_items else "N/A"
 
                 _, clean_badge = get_clean_order_status(o)
 
@@ -881,9 +864,7 @@ if "Orders &" in selected_page:
 
                 for inst in o.get("fulfillmentStartInstructions", []):
                     step = inst.get("shippingStep", {})
-                    track_info = step.get(
-                        "shipmentTracking", {}
-                    ).get("trackingNumber")
+                    track_info = step.get("shipmentTracking", {}).get("trackingNumber")
                     carrier_info = step.get("shippingCarrierCode")
                     if track_info:
                         tracking_num = track_info
@@ -938,9 +919,7 @@ if "Orders &" in selected_page:
                                     logs[log_key] = {
                                         "buyer": buyer,
                                         "status": "Sent",
-                                        "time": datetime.now().strftime(
-                                            "%Y-%m-%d %H:%M:%S"
-                                        ),
+                                        "time": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
                                     }
                                     save_json(LOGS_FILE, logs)
                                     st.success(f"Sent to {buyer}!")
@@ -952,9 +931,8 @@ if "Orders &" in selected_page:
         elif orders is not None:
              st.info("No orders found for the selected store and date range.")
 
-
 # ==========================================================
-# PAGE B: SALES & REVENUE REPORTS (FIXED DATAFRAME SAFETY)
+# PAGE B: SALES & REVENUE REPORTS (ACCURATE CANCELLED IDENTIFICATION)
 # ==========================================================
 elif selected_page == "📈 Sales & Revenue Reports":
     st.markdown(
@@ -966,7 +944,7 @@ elif selected_page == "📈 Sales & Revenue Reports":
     """,
         unsafe_allow_html=True,
     )
-    st.caption("Financial breakdown categorized by status and downloadable CSV reports.")
+    st.caption("Accurate financial categorization including full detection of Cancelled & Refunded orders.")
 
     if not accessible_stores:
         st.info("👋 Welcome! Your store is not connected yet.")
@@ -1005,7 +983,7 @@ elif selected_page == "📈 Sales & Revenue Reports":
 
         if refresh_sales_btn or sales_hash != last_sales_hash:
             if not (not fetch_all_sales_toggle and sales_start_date > sales_end_date):
-                with st.spinner("Fetching sales and subtotal records..."):
+                with st.spinner("Fetching sales records from eBay..."):
                     access_token = tokens["access_token"]
                     test_headers = {"Authorization": f"Bearer {access_token}"}
                     test_res = requests.get("https://api.ebay.com/sell/fulfillment/v1/order?limit=1", headers=test_headers)
@@ -1113,7 +1091,7 @@ elif selected_page == "📈 Sales & Revenue Reports":
 
             st.divider()
 
-            # Format and Export Table safely with drop errors='ignore'
+            # Format and Export Table safely
             expected_cols = ["Order ID", "Date", "Buyer", "Items", "Quantity", "Amount subtotal", "Currency", "Status"]
             if filtered_rows:
                 df_display = pd.DataFrame(filtered_rows).drop(columns=["RawStatus"], errors="ignore")
@@ -1143,7 +1121,6 @@ elif selected_page == "📈 Sales & Revenue Reports":
             )
         else:
             st.info("No sales records found for this period. Click '🔄 Sync Sales Data' to fetch.")
-
 
 # ==========================================================
 # PAGE C: LINK & MANAGE STORES (ADMIN OR CLIENT SELF-CONNECT)
@@ -1231,7 +1208,6 @@ elif (
                         time.sleep(1)
                         st.rerun()
 
-
 # ==========================================================
 # PAGE D: REGISTERED CLIENTS OVERVIEW (ADMIN ONLY)
 # ==========================================================
@@ -1280,7 +1256,6 @@ elif (
                     st.success(f"Client '{u}' removed!")
                     time.sleep(1)
                     st.rerun()
-
 
 # ==========================================================
 # PAGE E: MESSAGE TEMPLATES (CLIENT & ADMIN)
