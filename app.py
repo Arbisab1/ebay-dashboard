@@ -1898,7 +1898,7 @@ elif (
                         unsafe_allow_html=True,
                     )
                     if st.button(
-                        f"🗑️ Disdisconnect {s_name}",
+                        f"🗑️ Disconnect {s_name}",
                         key=f"del_store_{s_name}",
                         type="secondary",
                     ):
@@ -1910,7 +1910,7 @@ elif (
                         st.rerun()
 
 # ==========================================================
-# 5.5 CHROME EXTENSION DOWNLOAD HUB (FULLY AUTOMATED DOMAIN)
+# 5.5 CHROME EXTENSION DOWNLOAD HUB (ZERO CONFIG AUTO-SYNC)
 # ==========================================================
 elif "Download Chrome Extension" in selected_page:
     st.markdown("## 🧩 Auto-Fulfillment Chrome Extension Hub")
@@ -1932,7 +1932,7 @@ elif "Download Chrome Extension" in selected_page:
         ext_manifest = json.dumps({
             "manifest_version": 3,
             "name": "eBay Direct Order Autofill",
-            "version": "2.5",
+            "version": "2.7",
             "description": "Fetch buyer address via eBay Order ID and auto-fill checkout pages.",
             "permissions": ["storage", "activeTab", "scripting", "tabs"],
             "host_permissions": ["https://*/*", "http://*/*"],
@@ -2005,13 +2005,15 @@ elif "Download Chrome Extension" in selected_page:
           document.getElementById('lblStatus').innerText = "Locating Portal...";
           
           try {
-            const tabs = await chrome.tabs.query({ url: "*://*.streamlit.app/*" });
-            if (!tabs || tabs.length === 0) {
-              document.getElementById('lblStatus').innerText = "Error: Open your portal tab first!";
+            const tabs = await chrome.tabs.query({});
+            const portalTab = tabs.find(t => t.url && (t.url.includes("streamlit.app") || t.url.includes("localhost")));
+            
+            if (!portalTab) {
+              document.getElementById('lblStatus').innerText = "Error: Open portal tab first!";
               return;
             }
             
-            const portalUrl = new URL(tabs[0].url).origin;
+            const portalUrl = new URL(portalTab.url).origin;
             document.getElementById('lblStatus').innerText = "Fetching Order...";
             
             const res = await fetch(portalUrl + "/?api_order_id=" + oid);
@@ -2053,7 +2055,7 @@ elif "Download Chrome Extension" in selected_page:
     with col_ex2:
         st.markdown("""
         ### 🔒 Secure & Verified
-        * **Auto-Discovery:** Automatically finds your open portal tab without manual links.
+        * **Zero Configuration:** Automatically detects your open portal tab in the background.
         * **Instant Lookup:** Pulls buyer name, street, city, and zip using only the Order ID.
         * **Compatible With:** Google Chrome, Microsoft Edge, and Brave browsers.
         """)
