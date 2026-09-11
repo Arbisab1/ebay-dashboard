@@ -47,9 +47,7 @@ AUTH_URL = (
     f"https://auth.ebay.com/oauth2/authorize?client_id={CLIENT_ID}&response_type=code&redirect_uri={RUNAME}&"
     "scope=https%3A%2F%2Fapi.ebay.com%2Foauth%2Fapi_scope%20"
     "https%3A%2F%2Fapi.ebay.com%2Foauth%2Fapi_scope%2Fsell.fulfillment%20"
-    "https%3A%2F%2Fapi.ebay.com%2Foauth%2Fapi_scope%2Fsell.finances%20"
-    "https%3A%2F%2Fapi.ebay.com%2Foauth%2Fapi_scope%2Fbuy.browse%20"
-    "https%3A%2F%2Fapi.ebay.com%2Foauth%2Fapi_scope%2Fsell.compliance"
+    "https%3A%2F%2Fapi.ebay.com%2Foauth%2Fapi_scope%2Fsell.finances"
 )
 
 st.set_page_config(
