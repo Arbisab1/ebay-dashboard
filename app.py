@@ -1022,7 +1022,6 @@ if "Orders &" in selected_page:
         st.divider()
         st.markdown("#### 🔄 Sync Orders & Auto-Messaging Settings")
         
-        # Auto vs Manual Toggle Mode
         auto_mode_toggle = st.toggle("⚡ Enable Automatic Welcome Messaging (Auto-Pilot on Sync)", value=True, key="auto_messaging_mode_toggle")
         
         fetch_all_orders_toggle = st.checkbox("📋 Fetch ALL Orders (No Date Limit)", value=False, key="all_orders_toggle")
@@ -1096,7 +1095,6 @@ if "Orders &" in selected_page:
                                 log_key = f"{order_id}_{welcome_tpl_key}"
                                 order_type, _ = get_clean_order_status(o)
                                 
-                                # Send automatically only if it's a NEW unfulfilled order and not already messaged
                                 if order_type == "NEW" and log_key not in logs and item_id:
                                     try:
                                         msg_body = templates[welcome_tpl_key].format(
@@ -1219,7 +1217,6 @@ if "Orders &" in selected_page:
 
                     log_key = f"{order_id}_{chosen_template}"
                     
-                    # Prevent duplicate manual sending if already logged
                     if log_key not in logs:
                         try:
                             msg_body = templates[chosen_template].format(
@@ -1286,10 +1283,10 @@ if "Orders &" in selected_page:
                     formatted_preview = templates[chosen_template]
 
                 log_key = f"{order_id}_{chosen_template}"
-                is_sent = log_key in logs
+                sent_status_text = "✅ Sent" if log_key in logs else "⏳ Ready"
 
                 with st.expander(
-                    f"Order #{order_id} | Buyer: {buyer} | {clean_badge} | {'✅ Sent' : '⏳ Ready' if log_key not in logs else '✅ Sent'}"
+                    f"Order #{order_id} | Buyer: {buyer} | {clean_badge} | {sent_status_text}"
                 ):
                     c_det, c_act = st.columns([1.5, 2])
                     with c_det:
