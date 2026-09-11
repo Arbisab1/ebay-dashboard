@@ -32,8 +32,12 @@ RUNAME = st.secrets.get(
     os.getenv("EBAY_RUNAME", "Nawaz_Iqbal-NawazIqb-eBayAu-pifoqzze"),
 )
 
-SMTP_EMAIL = st.secrets.get("SMTP_EMAIL", os.getenv("SMTP_EMAIL", ""))
-SMTP_PASSWORD = st.secrets.get("SMTP_PASSWORD", os.getenv("SMTP_PASSWORD", ""))
+# Agar secrets mein na ho to yahan direct apna Gmail aur 16-digit App Password likh sakte hain:
+HARDCODED_GMAIL = ""          # e.g. "nawaziqbal@gmail.com"
+HARDCODED_APP_PASSWORD = ""   # e.g. "abcd efgh ijkl mnop"
+
+SMTP_EMAIL = st.secrets.get("SMTP_EMAIL", os.getenv("SMTP_EMAIL", HARDCODED_GMAIL)).strip()
+SMTP_PASSWORD = st.secrets.get("SMTP_PASSWORD", os.getenv("SMTP_PASSWORD", HARDCODED_APP_PASSWORD)).strip()
 
 STORES_FILE = "connected_stores.json"
 USERS_FILE = "users_db.json"
@@ -65,7 +69,6 @@ st.markdown(
         display: none !important;
     }}
 
-    /* Global Background with Cybernetic Node Map overlay */
     html, body, .stApp {{
         background: linear-gradient(rgba(10, 25, 47, 0.88), rgba(15, 23, 42, 0.92)),
                     url("https://images.unsplash.com/photo-1451187580459-43490279c0fa?auto=format&fit=crop&w=1920&q=80") no-repeat center center fixed !important;
@@ -78,7 +81,6 @@ st.markdown(
         padding-bottom: 2.5rem !important;
     }}
 
-    /* Content Cards & Containers */
     div[data-testid="stMetric"], .stExpander, div[data-testid="stForm"] {{
         background-color: rgba(255, 255, 255, 0.96) !important;
         border: 1px solid #CBD5E1 !important;
@@ -122,7 +124,6 @@ st.markdown(
         color: #1E293B !important;
     }}
 
-    /* Input & Select Box styling */
     input, textarea, select, div[data-baseweb="select"] {{
         background-color: #FFFFFF !important;
         color: #0F172A !important;
@@ -134,7 +135,6 @@ st.markdown(
         background-color: #FFFFFF !important;
     }}
 
-    /* Clean Sidebar */
     section[data-testid="stSidebar"] {{
         background-color: rgba(255, 255, 255, 0.97) !important;
         border-right: 1px solid #E2E8F0 !important;
@@ -213,7 +213,7 @@ ALL_MODULES = [
     "Connect eBay Store"
 ]
 
-# --- PERSISTENCE & SECURITY HELPERS ---
+# --- PERSISTENCE & EMAIL ENGINE ---
 def hash_pass(password):
     return hashlib.sha256(str(password).strip().encode()).hexdigest()
 
@@ -237,7 +237,7 @@ def save_json(filepath, data):
 
 def send_otp_email(receiver_email, otp_code, purpose="Verification"):
     if not SMTP_EMAIL or not SMTP_PASSWORD:
-        return False, "NO_SMTP"
+        return False, "SMTP_NOT_SET"
     try:
         msg = email.message.EmailMessage()
         msg["Subject"] = f"Your {purpose} Code - eBay Automation Portal"
@@ -245,14 +245,14 @@ def send_otp_email(receiver_email, otp_code, purpose="Verification"):
         msg["To"] = receiver_email
         msg.set_content(
             f"Hello,\n\nYour One-Time Password (OTP) for {purpose.lower()} is: {otp_code}\n\n"
-            "This code is valid for 10 minutes. If you did not request this, please ignore this email.\n\n"
+            "This code is valid for 10 minutes. Please do not share it with anyone.\n\n"
             "Regards,\neBay Portal Support Team"
         )
 
-        with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
-            server.login(SMTP_EMAIL, SMTP_PASSWORD)
+        with smtplib.SMTP_SSL("smtp.gmail.com", 465, timeout=10) as server:
+            server.login(SMTP_EMAIL, SMTP_PASSWORD.replace(" ", ""))
             server.send_message(msg)
-        return True, "OTP successfully sent!"
+        return True, "SENT"
     except Exception as e:
         return False, str(e)
 
@@ -588,13 +588,15 @@ if "otp_code" not in st.session_state:
     st.session_state.otp_code = None
 if "otp_target_user" not in st.session_state:
     st.session_state.otp_target_user = None
+if "otp_target_email" not in st.session_state:
+    st.session_state.otp_target_email = None
 if "otp_verified" not in st.session_state:
     st.session_state.otp_verified = False
 if "signup_temp_data" not in st.session_state:
     st.session_state.signup_temp_data = None
 
 # ==========================================================
-# 1. AUTHENTICATION (WITH RELIABLE OTP DISPATCH & FALLBACK)
+# 1. AUTHENTICATION & VERIFICATION ENGINE
 # ==========================================================
 if not st.session_state.logged_in:
     c1, c2, c3 = st.columns([1, 1.4, 1])
@@ -604,7 +606,7 @@ if not st.session_state.logged_in:
         <div style="text-align: center; padding: 22px 20px 14px 20px; background: rgba(255, 255, 255, 0.98); border: 1px solid #CBD5E1; border-radius: 12px; box-shadow: 0 8px 30px rgba(0,0,0,0.3); margin-bottom: 15px;">
             <img src="https://upload.wikimedia.org/wikipedia/commons/1/1b/EBay_logo.svg" width="95" style="margin-bottom: 6px;">
             <h3 style="margin: 0; color: #0F172A; font-weight: 700;">eBay Automation Portal</h3>
-            <p style="margin-top: 4px; color: #475569; font-size: 0.85rem;">Global Commerce Engine & Client Workspace</p>
+            <p style="margin-top: 4px; color: #475569; font-size: 0.85rem;">Secure Client Workspace & Automated Order Hub</p>
         </div>
         """,
             unsafe_allow_html=True,
@@ -656,7 +658,7 @@ if not st.session_state.logged_in:
                     st.session_state.otp_verified = False
                     st.rerun()
 
-        # MODE 2: SIGN UP WITH EMAIL OTP VERIFICATION
+        # MODE 2: SIGN UP WITH EMAIL OTP
         elif st.session_state.auth_mode == "signup":
             if not st.session_state.otp_code:
                 with st.form("signup_form"):
@@ -666,7 +668,7 @@ if not st.session_state.logged_in:
                     store_label = st.text_input("Your eBay Store Name / Alias:").strip()
                     
                     st.write("")
-                    signup_btn = st.form_submit_button("Send Verification Code", use_container_width=True, type="primary")
+                    signup_btn = st.form_submit_button("Send 6-Digit Code", use_container_width=True, type="primary")
 
                     if signup_btn:
                         if new_uname and new_email and new_pword and store_label:
@@ -679,6 +681,7 @@ if not st.session_state.logged_in:
                                 success, err_msg = send_otp_email(new_email, code, purpose="Registration Verification")
                                 
                                 st.session_state.otp_code = code
+                                st.session_state.otp_target_email = new_email
                                 st.session_state.signup_temp_data = {
                                     "username": new_uname,
                                     "email": new_email.lower(),
@@ -691,20 +694,22 @@ if not st.session_state.logged_in:
                                 if success:
                                     st.success(f"Verification code sent to {new_email}!")
                                 else:
-                                    # Fallback test notice if SMTP is pending
-                                    st.warning(f"SMTP Server not connected yet. Your test code is: **{code}**")
+                                    if err_msg == "SMTP_NOT_SET":
+                                        st.warning(f"SMTP not configured. Temporary Test OTP: **{code}**")
+                                    else:
+                                        st.error(f"Gmail Error: {err_msg}. Temporary Test OTP: **{code}**")
                                 time.sleep(1)
                                 st.rerun()
                         else:
                             st.warning("Please fill in all fields.")
             else:
                 temp_info = st.session_state.signup_temp_data
-                st.info(f"A 6-digit code has been dispatched for **{temp_info['email']}**.")
+                st.info(f"Verification code sent to **{temp_info['email']}**.")
                 reg_otp_input = st.text_input("Enter 6-Digit OTP:", max_chars=6, key="reg_otp_in").strip()
 
-                col_reg1, col_reg2 = st.columns(2)
-                with col_reg1:
-                    if st.button("✅ Verify & Register", type="primary", use_container_width=True):
+                c_reg1, c_reg2, c_reg3 = st.columns([1.5, 1.2, 1])
+                with c_reg1:
+                    if st.button("✅ Verify & Finish", type="primary", use_container_width=True):
                         if reg_otp_input == st.session_state.otp_code:
                             users_db[temp_info["username"]] = {
                                 "email": temp_info["email"],
@@ -722,23 +727,36 @@ if not st.session_state.logged_in:
                             st.session_state.allowed_modules = temp_info.get("allowed_modules", ALL_MODULES)
                             st.session_state.otp_code = None
                             st.session_state.signup_temp_data = None
-                            st.success("Account successfully verified and registered!")
+                            st.success("Account created and verified!")
                             time.sleep(1)
                             st.rerun()
                         else:
-                            st.error("Invalid verification code. Please check your code.")
-                with col_reg2:
-                    if st.button("Back / Edit Info", type="secondary", use_container_width=True):
+                            st.error("Invalid verification code.")
+                
+                with c_reg2:
+                    if st.button("🔄 Resend OTP", type="secondary", use_container_width=True):
+                        new_code = str(random.randint(100000, 999999))
+                        st.session_state.otp_code = new_code
+                        ok, em = send_otp_email(temp_info['email'], new_code, purpose="Registration Verification")
+                        if ok:
+                            st.success("New code sent!")
+                        else:
+                            st.warning(f"New Test OTP: **{new_code}**")
+                        time.sleep(1)
+                        st.rerun()
+
+                with c_reg3:
+                    if st.button("Cancel", type="secondary", use_container_width=True):
                         st.session_state.otp_code = None
                         st.session_state.signup_temp_data = None
                         st.rerun()
 
         # MODE 3: FORGOT PASSWORD
         elif st.session_state.auth_mode == "forgot":
-            st.markdown("#### 🔐 Password Reset via OTP")
+            st.markdown("#### 🔐 Reset Password via OTP")
             
             if not st.session_state.otp_code:
-                f_user = st.text_input("Enter Username or Email:", key="f_user_in").strip()
+                f_user = st.text_input("Enter Username or Registered Email:", key="f_user_in").strip()
                 if st.button("📩 Send OTP", type="primary", use_container_width=True):
                     matched_user = None
                     target_email = None
@@ -753,43 +771,55 @@ if not st.session_state.logged_in:
                         code = str(random.randint(100000, 999999))
                         st.session_state.otp_code = code
                         st.session_state.otp_target_user = matched_user
+                        st.session_state.otp_target_email = target_email
                         
                         if target_email:
-                            success, _ = send_otp_email(target_email, code, purpose="Password Reset")
-                            if success:
+                            ok, em = send_otp_email(target_email, code, purpose="Password Reset")
+                            if ok:
                                 st.success(f"OTP sent to {target_email[:3]}***@{target_email.split('@')[1]}!")
                             else:
-                                st.warning(f"SMTP not configured. Temporary OTP Code: **{code}**")
+                                st.warning(f"Email could not send. Temporary OTP: **{code}**")
                         else:
-                            st.warning(f"No email attached. Temporary OTP Code: **{code}**")
+                            st.warning(f"No email attached. Temporary OTP: **{code}**")
                             
                         time.sleep(1)
                         st.rerun()
                     else:
-                        st.error("No account found with this username or email.")
+                        st.error("No user found with this email or username.")
 
             elif not st.session_state.otp_verified:
-                st.info(f"Verification code sent for user **{st.session_state.otp_target_user}**.")
+                st.info(f"Verification code generated for **{st.session_state.otp_target_user}**.")
                 entered_otp = st.text_input("Enter 6-digit OTP Code:", max_chars=6, key="otp_in").strip()
                 
-                col_ov1, col_ov2 = st.columns(2)
-                with col_ov1:
+                c_ov1, c_ov2, c_ov3 = st.columns([1.5, 1.2, 1])
+                with c_ov1:
                     if st.button("✅ Verify OTP", type="primary", use_container_width=True):
                         if entered_otp == st.session_state.otp_code:
                             st.session_state.otp_verified = True
-                            st.success("OTP Verified! Set your new password.")
+                            st.success("Verified! Enter your new password.")
                             time.sleep(1)
                             st.rerun()
                         else:
-                            st.error("Invalid OTP code.")
-                with col_ov2:
-                    if st.button("Resend / Back", type="secondary", use_container_width=True):
+                            st.error("Invalid code.")
+
+                with c_ov2:
+                    if st.button("🔄 Resend OTP", type="secondary", use_container_width=True):
+                        new_code = str(random.randint(100000, 999999))
+                        st.session_state.otp_code = new_code
+                        if st.session_state.otp_target_email:
+                            send_otp_email(st.session_state.otp_target_email, new_code, purpose="Password Reset")
+                        st.warning(f"New OTP Code: **{new_code}**")
+                        time.sleep(1)
+                        st.rerun()
+
+                with c_ov3:
+                    if st.button("Back", type="secondary", use_container_width=True):
                         st.session_state.otp_code = None
                         st.rerun()
 
             else:
-                st.success(f"Identity confirmed for `{st.session_state.otp_target_user}`.")
-                new_reset_pass = st.text_input("Enter New Password:", type="password", key="nrp_in").strip()
+                st.success(f"Verified for user `{st.session_state.otp_target_user}`.")
+                new_reset_pass = st.text_input("New Password:", type="password", key="nrp_in").strip()
                 confirm_reset_pass = st.text_input("Confirm New Password:", type="password", key="cnrp_in").strip()
 
                 if st.button("💾 Save New Password", type="primary", use_container_width=True):
@@ -798,7 +828,7 @@ if not st.session_state.logged_in:
                         users_db[u_target]["password"] = hash_pass(new_reset_pass)
                         save_json(USERS_FILE, users_db)
                         
-                        st.success("Password reset successfully! Please sign in.")
+                        st.success("Password changed! Please log in.")
                         st.session_state.otp_code = None
                         st.session_state.otp_target_user = None
                         st.session_state.otp_verified = False
@@ -808,6 +838,7 @@ if not st.session_state.logged_in:
                     else:
                         st.error("Passwords do not match or are empty.")
 
+        # Bottom Switching
         st.write("")
         col_sw1, col_sw2 = st.columns(2)
         with col_sw1:
@@ -902,7 +933,6 @@ with st.sidebar:
 
     st.divider()
 
-    # DYNAMIC MENU CONSTRUCTION
     user_modules = st.session_state.allowed_modules if st.session_state.role != "admin" else ALL_MODULES
     nav_options = []
 
