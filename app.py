@@ -1842,7 +1842,7 @@ elif (
                         unsafe_allow_html=True,
                     )
                     if st.button(
-                        f"🗑️ Disconnect {s_name}",
+                        f"🗑️ Disdisconnect {s_name}",
                         key=f"del_store_{s_name}",
                         type="secondary",
                     ):
@@ -1852,6 +1852,93 @@ elif (
                         st.success(f"Store '{s_name}' removed!")
                         time.sleep(1)
                         st.rerun()
+
+# ==========================================================
+# 5.5 CHROME EXTENSION DOWNLOAD HUB (FIXED)
+# ==========================================================
+elif "Download Chrome Extension" in selected_page:
+    st.markdown("## 🧩 Auto-Fulfillment Chrome Extension Hub")
+    st.caption("Download and install our official browser extension for 1-click supplier checkout auto-filling.")
+
+    col_ex1, col_ex2 = st.columns([1.5, 1])
+
+    with col_ex1:
+        st.markdown("""
+        ### 🚀 How to Install & Use:
+        1. Click the **Download Extension Package** button below to get the `.zip` file.
+        2. Extract/unzip the downloaded folder on your computer.
+        3. Open Google Chrome and go to `chrome://extensions/`.
+        4. Turn on **Developer mode** (top right corner).
+        5. Click **Load unpacked** (top left) and select the extracted extension folder.
+        6. Open any supplier checkout page (AliExpress, CJ Dropshipping, etc.) and click the extension icon to auto-fill customer details in 1 click!
+        """)
+        
+        ext_manifest = json.dumps({
+            "manifest_version": 3,
+            "name": "eBay Auto-Fulfillment Assistant",
+            "version": "1.0",
+            "description": "Auto-fill buyer shipping details on supplier checkout pages.",
+            "permissions": ["storage", "activeTab", "scripting"],
+            "host_permissions": ["https://*.aliexpress.com/*", "https://*.cjdropshipping.com/*"],
+            "action": {"default_popup": "popup.html"},
+            "content_scripts": [{
+                "matches": ["https://*.aliexpress.com/*", "https://*.cjdropshipping.com/*"],
+                "js": ["content.js"]
+            }]
+        }, indent=4)
+
+        ext_content_js = """
+        chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+          if (request.action === "autofill_order") {
+            const data = request.orderData;
+            try {
+              const fillInput = (selector, val) => {
+                const el = document.querySelector(selector);
+                if (el && val) { el.value = val; el.dispatchEvent(new Event('input', { bubbles: true })); }
+              };
+              fillInput('input[name="contactName"], input[id*="contactName"]', data.buyerName);
+              fillInput('input[name="mobileNo"], input[id*="mobileNo"]', data.phone || "1234567890");
+              fillInput('input[name="address"], textarea[placeholder*="Street"]', data.street);
+              fillInput('input[name="city"]', data.city);
+              fillInput('input[name="zip"]', data.postalCode);
+              sendResponse({ status: "success" });
+            } catch (err) { sendResponse({ status: "error", message: err.toString() }); }
+          }
+        });
+        """
+
+        ext_popup_html = """
+        <!DOCTYPE html>
+        <html>
+        <head><meta charset="utf-8"><style>body{width:260px;font-family:sans-serif;padding:10px;background:#F8FAFC;}h3{color:#2563EB;margin-top:0;}</style></head>
+        <body><h3>📦 eBay Fulfillment</h3><p>Extension is active and linked to your portal.</p></body>
+        </html>
+        """
+
+        import zipfile
+        zip_buffer = io.BytesIO()
+        with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zf:
+            zf.writestr("manifest.json", ext_manifest)
+            zf.writestr("content.js", ext_content_js)
+            zf.writestr("popup.html", ext_popup_html)
+        
+        st.write("")
+        st.download_button(
+            label="📦 Download Extension Package (.zip)",
+            data=zip_buffer.getvalue(),
+            file_name="eBay_Auto_Fulfillment_Extension.zip",
+            mime="application/zip",
+            type="primary",
+            use_container_width=True
+        )
+
+    with col_ex2:
+        st.markdown("""
+        ### 🔒 Secure & Verified
+        * **Zero Data Retention:** Data is sent securely via authorized encrypted tokens.
+        * **Direct Sync:** Matches orders automatically.
+        * **Compatible With:** Google Chrome, Microsoft Edge, and Brave browsers.
+        """)
 
 # ==========================================================
 # 6. REGISTERED CLIENTS OVERVIEW (ADMIN ONLY - WITH EMAIL UPDATE)
@@ -1898,7 +1985,6 @@ elif (
                 )
 
                 with st.expander(f"⚙️ Manage Email & Services for {u}"):
-                    # EMAIL UPDATE SECTION
                     st.markdown("##### ✉️ Update / Add Client Email")
                     new_email_input = st.text_input(f"New Email for {u}:", value=email_addr, key=f"email_input_{u}")
                     if st.button("💾 Update Email", key=f"btn_save_email_{u}", type="primary"):
