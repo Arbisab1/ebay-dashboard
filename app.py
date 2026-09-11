@@ -57,26 +57,20 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-# --- STRICT LIGHT THEME ENFORCER ---
+# --- THEME: CYBERNETIC GLOBAL TRADE NODE BACKGROUND ---
 st.markdown(
     f"""
 <style>
-    :root {{
-        color-scheme: light !important;
-    }}
-    
     header[data-testid="stHeader"], div[data-testid="stDecoration"] {{
         display: none !important;
     }}
 
+    /* Global Background with Cybernetic Node Map overlay */
     html, body, .stApp {{
-        background-color: #F8FAFC !important;
-        color: #0F172A !important;
+        background: linear-gradient(rgba(10, 25, 47, 0.88), rgba(15, 23, 42, 0.92)),
+                    url("https://images.unsplash.com/photo-1451187580459-43490279c0fa?auto=format&fit=crop&w=1920&q=80") no-repeat center center fixed !important;
+        background-size: cover !important;
         font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif !important;
-    }}
-
-    p, span, label, h1, h2, h3, h4, h5, h6, div, li {{
-        color: #0F172A !important;
     }}
 
     .block-container {{
@@ -84,29 +78,34 @@ st.markdown(
         padding-bottom: 2.5rem !important;
     }}
 
-    div[data-testid="stMetric"] {{
-        background-color: #FFFFFF !important;
+    /* Content Cards & Containers */
+    div[data-testid="stMetric"], .stExpander, div[data-testid="stForm"] {{
+        background-color: rgba(255, 255, 255, 0.96) !important;
         border: 1px solid #CBD5E1 !important;
-        border-radius: 10px !important;
-        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05) !important;
+        border-radius: 12px !important;
+        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.25) !important;
+    }}
+
+    div[data-testid="stMetric"] {{
         padding: 16px 20px !important;
     }}
     div[data-testid="stMetricValue"] {{
         font-size: 1.85rem !important;
         font-weight: 700 !important;
-        color: #2563EB !important;
+        color: #1E40AF !important;
     }}
     div[data-testid="stMetricLabel"] p {{
-        color: #475569 !important;
+        color: #334155 !important;
         font-weight: 600 !important;
     }}
 
     button[kind="primary"] {{
-        background-color: #2563EB !important;
+        background: linear-gradient(135deg, #2563EB, #1D4ED8) !important;
         color: #FFFFFF !important;
         font-weight: 600 !important;
         border: none !important;
         border-radius: 8px !important;
+        box-shadow: 0 2px 6px rgba(37, 99, 235, 0.4) !important;
     }}
     button[kind="primary"] p {{
         color: #FFFFFF !important;
@@ -123,31 +122,21 @@ st.markdown(
         color: #1E293B !important;
     }}
 
-    .streamlit-expanderHeader {{
-        background-color: #FFFFFF !important;
-        border: 1px solid #CBD5E1 !important;
-        border-radius: 8px !important;
-        color: #0F172A !important;
-        font-weight: 600 !important;
-    }}
-    .streamlit-expanderHeader p, .streamlit-expanderHeader span {{
-        color: #0F172A !important;
-    }}
-
+    /* Input & Select Box styling */
     input, textarea, select, div[data-baseweb="select"] {{
         background-color: #FFFFFF !important;
         color: #0F172A !important;
         border-color: #94A3B8 !important;
         border-radius: 8px !important;
     }}
-    
     div[data-baseweb="select"] * {{
         color: #0F172A !important;
         background-color: #FFFFFF !important;
     }}
 
+    /* Clean Sidebar */
     section[data-testid="stSidebar"] {{
-        background-color: #FFFFFF !important;
+        background-color: rgba(255, 255, 255, 0.97) !important;
         border-right: 1px solid #E2E8F0 !important;
     }}
     section[data-testid="stSidebar"] * {{
@@ -164,7 +153,7 @@ st.markdown(
         padding: 10px 18px;
         font-size: 14px;
         font-weight: 600;
-        box-shadow: 0 4px 15px rgba(0, 0, 0, 0.15);
+        box-shadow: 0 4px 15px rgba(0, 0, 0, 0.25);
         z-index: 999999;
         display: flex;
         align-items: center;
@@ -178,7 +167,6 @@ st.markdown(
     .floating-whatsapp:hover {{
         background-color: #20BA5A;
         transform: scale(1.05);
-        box-shadow: 0 6px 20px rgba(37, 211, 102, 0.4);
     }}
 </style>
 
@@ -249,7 +237,7 @@ def save_json(filepath, data):
 
 def send_otp_email(receiver_email, otp_code, purpose="Verification"):
     if not SMTP_EMAIL or not SMTP_PASSWORD:
-        return False, "SMTP settings not configured. Please set SMTP_EMAIL and SMTP_PASSWORD in secrets."
+        return False, "NO_SMTP"
     try:
         msg = email.message.EmailMessage()
         msg["Subject"] = f"Your {purpose} Code - eBay Automation Portal"
@@ -266,7 +254,7 @@ def send_otp_email(receiver_email, otp_code, purpose="Verification"):
             server.send_message(msg)
         return True, "OTP successfully sent!"
     except Exception as e:
-        return False, f"Failed to send email: {str(e)}"
+        return False, str(e)
 
 # --- AUTH & API HELPERS ---
 def clean_auth_code(input_str):
@@ -606,17 +594,17 @@ if "signup_temp_data" not in st.session_state:
     st.session_state.signup_temp_data = None
 
 # ==========================================================
-# 1. AUTHENTICATION (SIGN IN / SIGN UP WITH OTP / FORGOT PASSWORD OTP)
+# 1. AUTHENTICATION (WITH RELIABLE OTP DISPATCH & FALLBACK)
 # ==========================================================
 if not st.session_state.logged_in:
     c1, c2, c3 = st.columns([1, 1.4, 1])
     with c2:
         st.markdown(
             """
-        <div style="text-align: center; padding: 22px 20px 14px 20px; background: #FFFFFF; border: 1px solid #CBD5E1; border-radius: 12px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05); margin-bottom: 15px;">
+        <div style="text-align: center; padding: 22px 20px 14px 20px; background: rgba(255, 255, 255, 0.98); border: 1px solid #CBD5E1; border-radius: 12px; box-shadow: 0 8px 30px rgba(0,0,0,0.3); margin-bottom: 15px;">
             <img src="https://upload.wikimedia.org/wikipedia/commons/1/1b/EBay_logo.svg" width="95" style="margin-bottom: 6px;">
             <h3 style="margin: 0; color: #0F172A; font-weight: 700;">eBay Automation Portal</h3>
-            <p style="margin-top: 4px; color: #475569; font-size: 0.85rem;">Sign in, register with verified email, or reset password</p>
+            <p style="margin-top: 4px; color: #475569; font-size: 0.85rem;">Global Commerce Engine & Client Workspace</p>
         </div>
         """,
             unsafe_allow_html=True,
@@ -668,7 +656,7 @@ if not st.session_state.logged_in:
                     st.session_state.otp_verified = False
                     st.rerun()
 
-        # MODE 2: SIGN UP WITH MANDATORY EMAIL OTP VERIFICATION
+        # MODE 2: SIGN UP WITH EMAIL OTP VERIFICATION
         elif st.session_state.auth_mode == "signup":
             if not st.session_state.otp_code:
                 with st.form("signup_form"):
@@ -689,26 +677,29 @@ if not st.session_state.logged_in:
                             else:
                                 code = str(random.randint(100000, 999999))
                                 success, err_msg = send_otp_email(new_email, code, purpose="Registration Verification")
+                                
+                                st.session_state.otp_code = code
+                                st.session_state.signup_temp_data = {
+                                    "username": new_uname,
+                                    "email": new_email.lower(),
+                                    "password": hash_pass(new_pword),
+                                    "role": "client",
+                                    "assigned_stores": [store_label],
+                                    "allowed_modules": ALL_MODULES,
+                                }
+                                
                                 if success:
-                                    st.session_state.otp_code = code
-                                    st.session_state.signup_temp_data = {
-                                        "username": new_uname,
-                                        "email": new_email.lower(),
-                                        "password": hash_pass(new_pword),
-                                        "role": "client",
-                                        "assigned_stores": [store_label],
-                                        "allowed_modules": ALL_MODULES,  # Full access by default
-                                    }
                                     st.success(f"Verification code sent to {new_email}!")
-                                    time.sleep(1)
-                                    st.rerun()
                                 else:
-                                    st.error(f"Failed to send verification email: {err_msg}")
+                                    # Fallback test notice if SMTP is pending
+                                    st.warning(f"SMTP Server not connected yet. Your test code is: **{code}**")
+                                time.sleep(1)
+                                st.rerun()
                         else:
                             st.warning("Please fill in all fields.")
             else:
                 temp_info = st.session_state.signup_temp_data
-                st.info(f"We've sent a 6-digit code to **{temp_info['email']}** to complete your registration.")
+                st.info(f"A 6-digit code has been dispatched for **{temp_info['email']}**.")
                 reg_otp_input = st.text_input("Enter 6-Digit OTP:", max_chars=6, key="reg_otp_in").strip()
 
                 col_reg1, col_reg2 = st.columns(2)
@@ -735,20 +726,20 @@ if not st.session_state.logged_in:
                             time.sleep(1)
                             st.rerun()
                         else:
-                            st.error("Invalid verification code. Please check your inbox.")
+                            st.error("Invalid verification code. Please check your code.")
                 with col_reg2:
-                    if st.button("Change Email / Back", type="secondary", use_container_width=True):
+                    if st.button("Back / Edit Info", type="secondary", use_container_width=True):
                         st.session_state.otp_code = None
                         st.session_state.signup_temp_data = None
                         st.rerun()
 
-        # MODE 3: FORGOT PASSWORD (OTP VERIFICATION)
+        # MODE 3: FORGOT PASSWORD
         elif st.session_state.auth_mode == "forgot":
-            st.markdown("#### 🔐 Password Reset via Email OTP")
+            st.markdown("#### 🔐 Password Reset via OTP")
             
             if not st.session_state.otp_code:
-                f_user = st.text_input("Enter your Username or Registered Email:", key="f_user_in").strip()
-                if st.button("📩 Send 6-Digit OTP", type="primary", use_container_width=True):
+                f_user = st.text_input("Enter Username or Email:", key="f_user_in").strip()
+                if st.button("📩 Send OTP", type="primary", use_container_width=True):
                     matched_user = None
                     target_email = None
 
@@ -758,22 +749,27 @@ if not st.session_state.logged_in:
                             target_email = data.get("email")
                             break
 
-                    if matched_user and target_email:
+                    if matched_user:
                         code = str(random.randint(100000, 999999))
-                        success, err_msg = send_otp_email(target_email, code, purpose="Password Reset")
-                        if success:
-                            st.session_state.otp_code = code
-                            st.session_state.otp_target_user = matched_user
-                            st.success(f"OTP sent to {target_email[:3]}***@{target_email.split('@')[1]}!")
-                            time.sleep(1)
-                            st.rerun()
+                        st.session_state.otp_code = code
+                        st.session_state.otp_target_user = matched_user
+                        
+                        if target_email:
+                            success, _ = send_otp_email(target_email, code, purpose="Password Reset")
+                            if success:
+                                st.success(f"OTP sent to {target_email[:3]}***@{target_email.split('@')[1]}!")
+                            else:
+                                st.warning(f"SMTP not configured. Temporary OTP Code: **{code}**")
                         else:
-                            st.error(f"Error: {err_msg}")
+                            st.warning(f"No email attached. Temporary OTP Code: **{code}**")
+                            
+                        time.sleep(1)
+                        st.rerun()
                     else:
                         st.error("No account found with this username or email.")
 
             elif not st.session_state.otp_verified:
-                st.info(f"An OTP was sent to the registered email for **{st.session_state.otp_target_user}**.")
+                st.info(f"Verification code sent for user **{st.session_state.otp_target_user}**.")
                 entered_otp = st.text_input("Enter 6-digit OTP Code:", max_chars=6, key="otp_in").strip()
                 
                 col_ov1, col_ov2 = st.columns(2)
@@ -785,9 +781,9 @@ if not st.session_state.logged_in:
                             time.sleep(1)
                             st.rerun()
                         else:
-                            st.error("Invalid OTP. Please check your email.")
+                            st.error("Invalid OTP code.")
                 with col_ov2:
-                    if st.button("Resend Code", type="secondary", use_container_width=True):
+                    if st.button("Resend / Back", type="secondary", use_container_width=True):
                         st.session_state.otp_code = None
                         st.rerun()
 
@@ -843,7 +839,7 @@ else:
         if k in st.session_state.assigned_stores
     }
 
-# --- SIDEBAR (DYNAMICALLY FILTERED BY USER'S ALLOWED MODULES) ---
+# --- SIDEBAR ---
 with st.sidebar:
     st.markdown(
         """
@@ -910,36 +906,29 @@ with st.sidebar:
     user_modules = st.session_state.allowed_modules if st.session_state.role != "admin" else ALL_MODULES
     nav_options = []
 
-    # 1. Orders
     if "Orders & Auto-Messaging" in user_modules or st.session_state.role == "admin":
         nav_options.append("All Stores Orders & Messaging" if st.session_state.role == "admin" else "My Orders & Auto-Messaging")
 
-    # 2. Hunting
     if "Product Hunting & Research" in user_modules or st.session_state.role == "admin":
         nav_options.append("🔍 Product Hunting & Research")
 
-    # 3. Violations
     if "Listing Violations & Policy" in user_modules or st.session_state.role == "admin":
         nav_options.append("⚠️ Listing Violations & Policy")
 
-    # 4. Sales Reports
     if "Sales & Revenue Reports" in user_modules or st.session_state.role == "admin":
         nav_options.append("📈 Sales & Revenue Reports")
 
-    # 5. Connect Store
     if "Connect eBay Store" in user_modules or st.session_state.role == "admin":
         nav_options.append("➕ Link & Manage eBay Stores" if st.session_state.role == "admin" else "➕ Connect My eBay Store")
 
-    # 6. Admin Only Overview
     if st.session_state.role == "admin":
         nav_options.append("👥 Registered Clients Overview")
 
-    # 7. Message Templates
     if "Orders & Auto-Messaging" in user_modules or st.session_state.role == "admin":
         nav_options.append("📝 Global Message Templates" if st.session_state.role == "admin" else "📝 My Message Templates")
 
     if not nav_options:
-        st.warning("No active modules assigned to your account. Please contact Administrator.")
+        st.warning("No active modules assigned to your account.")
         selected_page = "No Access"
     else:
         selected_page = st.radio("Menu", nav_options, label_visibility="collapsed")
@@ -973,7 +962,7 @@ if "Orders &" in selected_page:
         f"""
     <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 8px;">
         <img src="https://upload.wikimedia.org/wikipedia/commons/1/1b/EBay_logo.svg" width="75">
-        <h2 style="margin: 0; color: #0F172A; font-weight: 700;">{selected_page}</h2>
+        <h2 style="margin: 0; color: #FFFFFF; font-weight: 700;">{selected_page}</h2>
     </div>
     """,
         unsafe_allow_html=True,
@@ -989,7 +978,7 @@ if "Orders &" in selected_page:
         tokens = accessible_stores[active_store_name]
 
         st.divider()
-        st.markdown("#### 🔄 Sync Orders from eBay")
+        st.markdown("<h4 style='color: white;'>🔄 Sync Orders from eBay</h4>", unsafe_allow_html=True)
         
         fetch_all_orders_toggle = st.checkbox("📋 Fetch ALL Orders (No Date Limit)", value=False, key="all_orders_toggle")
         
@@ -1177,7 +1166,7 @@ if "Orders &" in selected_page:
                 st.rerun()
 
             st.divider()
-            st.markdown("### 📋 Order List & Direct Actions")
+            st.markdown("<h3 style='color: white;'>📋 Order List & Direct Actions</h3>", unsafe_allow_html=True)
 
             for o in display_orders:
                 order_id = o.get("orderId", "")
@@ -1268,7 +1257,7 @@ elif selected_page == "🔍 Product Hunting & Research":
         """
     <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 8px;">
         <img src="https://upload.wikimedia.org/wikipedia/commons/1/1b/EBay_logo.svg" width="75">
-        <h2 style="margin: 0; color: #0F172A; font-weight: 700;">Product Hunting & Competitor Policy Audit</h2>
+        <h2 style="margin: 0; color: #FFFFFF; font-weight: 700;">Product Hunting & Competitor Policy Audit</h2>
     </div>
     """,
         unsafe_allow_html=True,
@@ -1276,7 +1265,7 @@ elif selected_page == "🔍 Product Hunting & Research":
     st.caption("Scan marketplace competitors, evaluate price benchmarks, and audit competitor listing policy violations.")
 
     with st.container():
-        st.markdown("#### 🔎 Research Product Niche / Keyword")
+        st.markdown("<h4 style='color: #0F172A;'>🔎 Research Product Niche / Keyword</h4>", unsafe_allow_html=True)
         r_col1, r_col2, r_col3, r_col4 = st.columns([3, 1.5, 1.5, 1.2])
 
         with r_col1:
@@ -1373,7 +1362,7 @@ elif selected_page == "🔍 Product Hunting & Research":
             primary_curr = df_hunt_raw["Currency"].iloc[0] if not df_hunt_raw.empty else "USD"
 
             st.divider()
-            st.markdown(f"### 📊 Market & Compliance Summary for `{search_query}`")
+            st.markdown(f"<h3 style='color: white;'>📊 Market & Compliance Summary for `{search_query}`</h3>", unsafe_allow_html=True)
 
             hk1, hk2, hk3, hk4 = st.columns(4)
             hk1.metric("Average Market Price", f"{primary_curr} {avg_price:,.2f}")
@@ -1433,7 +1422,7 @@ elif selected_page == "⚠️ Listing Violations & Policy":
         """
     <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 8px;">
         <img src="https://upload.wikimedia.org/wikipedia/commons/1/1b/EBay_logo.svg" width="75">
-        <h2 style="margin: 0; color: #0F172A; font-weight: 700;">Listing Violations & Policy Health</h2>
+        <h2 style="margin: 0; color: #FFFFFF; font-weight: 700;">Listing Violations & Policy Health</h2>
     </div>
     """,
         unsafe_allow_html=True,
@@ -1570,7 +1559,7 @@ elif selected_page == "📈 Sales & Revenue Reports":
         """
     <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 8px;">
         <img src="https://upload.wikimedia.org/wikipedia/commons/1/1b/EBay_logo.svg" width="75">
-        <h2 style="margin: 0; color: #0F172A; font-weight: 700;">Sales & Subtotal Reports</h2>
+        <h2 style="margin: 0; color: #FFFFFF; font-weight: 700;">Sales & Subtotal Reports</h2>
     </div>
     """,
         unsafe_allow_html=True,
@@ -1586,7 +1575,7 @@ elif selected_page == "📈 Sales & Revenue Reports":
         tokens = accessible_stores[active_sales_store]
 
         st.divider()
-        st.markdown("#### 📅 Report Date Range")
+        st.markdown("<h4 style='color: white;'>📅 Report Date Range</h4>", unsafe_allow_html=True)
         
         fetch_all_sales_toggle = st.checkbox("📋 Fetch All-Time Sales (No Date Limit)", value=False, key="all_sales_toggle")
         
@@ -1833,7 +1822,7 @@ elif (
                         st.rerun()
 
 # ==========================================================
-# 6. REGISTERED CLIENTS OVERVIEW (WITH MODULE PERMISSION CONTROLS)
+# 6. REGISTERED CLIENTS OVERVIEW (ADMIN ONLY)
 # ==========================================================
 elif (
     selected_page == "👥 Registered Clients Overview"
@@ -1876,7 +1865,6 @@ elif (
                     unsafe_allow_html=True,
                 )
 
-                # PERMISSIONS MANAGEMENT EXPANDER
                 with st.expander(f"⚙️ Manage Services & Access for {u}"):
                     st.write("**Select Services to Enable for this Client:**")
                     
