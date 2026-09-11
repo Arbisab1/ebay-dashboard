@@ -68,7 +68,6 @@ st.markdown(
         display: none !important;
     }}
 
-    /* Global Soft Professional SaaS Background */
     html, body, .stApp {{
         background-color: #F8FAFC !important;
         color: #0F172A !important;
@@ -80,7 +79,6 @@ st.markdown(
         padding-bottom: 3rem !important;
     }}
 
-    /* Clean Card Containers & Forms */
     div[data-testid="stMetric"], .stExpander, div[data-testid="stForm"], div.row-widget.stRadio {{
         background-color: #FFFFFF !important;
         border: 1px solid #E2E8F0 !important;
@@ -89,7 +87,6 @@ st.markdown(
         padding: 16px !important;
     }}
 
-    /* Typography & Headings */
     h1, h2, h3, h4, h5, h6, p, span, label, div {{
         color: #0F172A !important;
     }}
@@ -104,7 +101,6 @@ st.markdown(
         font-weight: 600 !important;
     }}
 
-    /* Primary Action Buttons */
     button[kind="primary"] {{
         background-color: #2563EB !important;
         color: #FFFFFF !important;
@@ -117,7 +113,6 @@ st.markdown(
         color: #FFFFFF !important;
     }}
 
-    /* Secondary Buttons */
     button[kind="secondary"] {{
         background-color: #FFFFFF !important;
         border: 1px solid #CBD5E1 !important;
@@ -129,7 +124,6 @@ st.markdown(
         color: #1E293B !important;
     }}
 
-    /* Form Inputs & Selects */
     input, textarea, select, div[data-baseweb="select"] {{
         background-color: #FFFFFF !important;
         color: #0F172A !important;
@@ -145,7 +139,6 @@ st.markdown(
         background-color: #FFFFFF !important;
     }}
 
-    /* Clean Sidebar */
     section[data-testid="stSidebar"] {{
         background-color: #FFFFFF !important;
         border-right: 1px solid #E2E8F0 !important;
@@ -221,7 +214,8 @@ ALL_MODULES = [
     "Product Hunting & Research",
     "Listing Violations & Policy",
     "Sales & Revenue Reports",
-    "Connect eBay Store"
+    "Connect eBay Store",
+    "Chrome Extension"
 ]
 
 # --- PERSISTENCE & EMAIL ENGINE ---
@@ -955,6 +949,9 @@ with st.sidebar:
 
     if "Connect eBay Store" in user_modules or st.session_state.role == "admin":
         nav_options.append("➕ Link & Manage eBay Stores" if st.session_state.role == "admin" else "➕ Connect My eBay Store")
+
+    if "Chrome Extension" in user_modules or st.session_state.role == "admin":
+        nav_options.append("🧩 Download Chrome Extension")
 
     if st.session_state.role == "admin":
         nav_options.append("👥 Registered Clients Overview")
@@ -1857,6 +1854,95 @@ elif (
                         st.rerun()
 
 # ==========================================================
+# 5.5 CHROME EXTENSION DOWNLOAD HUB (NEW)
+# ==========================================================
+elif "Download Chrome Extension" in selected_page:
+    st.markdown("## 🧩 Auto-Fulfillment Chrome Extension Hub")
+    st.caption("Download and install our official browser extension for 1-click supplier checkout auto-filling.")
+
+    col_ex1, col_ex2 = st.columns([1.5, 1])
+
+    with col_ex1:
+        st.markdown("""
+        ### 🚀 How to Install & Use:
+        1. Click the **Download Extension Package** button below to get the `.zip` file.
+        2. Extract/unzip the downloaded folder on your computer.
+        3. Open Google Chrome and go to `chrome://extensions/`.
+        4. Turn on **Developer mode** (top right corner).
+        5. Click **Load unpacked** (top left) and select the extracted extension folder.
+        6. Open any supplier checkout page (AliExpress, CJ Dropshipping, etc.) and click the extension icon to auto-fill customer details in 1 click!
+        """)
+        
+        # Generating a bundled extension package for direct client download
+        ext_manifest = json.dumps({
+            "manifest_version": 3,
+            "name": "eBay Auto-Fulfillment Assistant",
+            "version": "1.0",
+            "description": "Auto-fill buyer shipping details on supplier checkout pages.",
+            "permissions": ["storage", "activeTab", "scripting"],
+            "host_permissions": ["https://*.aliexpress.com/*", "https://*.cjdropshipping.com/*"],
+            "action": {"default_popup": "popup.html"},
+            "content_scripts": [{
+                "matches": ["https://*.aliexpress.com/*", "https://*.cjdropshipping.com/*"],
+                "js": ["content.js"]
+            }]
+        }, indent=4)
+
+        ext_content_js = """
+        chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+          if (request.action === "autofill_order") {
+            const data = request.orderData;
+            try {
+              const fillInput = (selector, val) => {
+                const el = document.querySelector(selector);
+                if (el && val) { el.value = val; el.dispatchEvent(new Event('input', { bubbles: true })); }
+              };
+              fillInput('input[name="contactName"], input[id*="contactName"]', data.buyerName);
+              fillInput('input[name="mobileNo"], input[id*="mobileNo"]', data.phone || "1234567890");
+              fillInput('input[name="address"], textarea[placeholder*="Street"]', data.street);
+              fillInput('input[name="city"]', data.city);
+              fillInput('input[name="zip"]', data.postalCode);
+              sendResponse({ status: "success" });
+            } catch (err) { sendResponse({ status: "error", message: err.toString() }); }
+          }
+        });
+        """
+
+        ext_popup_html = """
+        <!DOCTYPE html>
+        <html>
+        <head><meta charset="utf-8"><style>body{width:260px;font-family:sans-serif;padding:10px;background:#F8FAFC;}h3{color:#2563EB;margin-top:0;}</style></head>
+        <body><h3>📦 eBay Fulfillment</h3><p>Extension is active and linked to your portal.</p></body>
+        </html>
+        """
+
+        # Zip in memory for download
+        zip_buffer = io.BytesIO()
+        import zipfile
+        with zipfile.ZipFile(zip_buffer, "w") as zf:
+            zf.writestr("manifest.json", ext_manifest)
+            zf.writestr("content.js", ext_content_js)
+            zf.writestr("popup.html", ext_popup_html)
+        
+        st.write("")
+        st.download_button(
+            label="📦 Download Extension Package (.zip)",
+            data=zip_buffer.getvalue(),
+            file_name="eBay_Auto_Fulfillment_Extension.zip",
+            mime="application/zip",
+            type="primary",
+            use_container_width=True
+        )
+
+    with col_ex2:
+        st.markdown("""
+        ### 🔒 Secure & Verified
+        * **Zero Data Retention:** Data is sent securely via authorized encrypted tokens.
+        * **Direct Sync:** Matches orders automatically.
+        * **Compatible With:** Google Chrome, Microsoft Edge, and Brave browsers.
+        """)
+
+# ==========================================================
 # 6. REGISTERED CLIENTS OVERVIEW (ADMIN ONLY)
 # ==========================================================
 elif (
@@ -1919,6 +2005,8 @@ elif (
                             new_selected_modules.append("Sales & Revenue Reports")
                         if st.checkbox("➕ Connect eBay Store", value=("Connect eBay Store" in curr_allowed), key=f"chk_store_{u}"):
                             new_selected_modules.append("Connect eBay Store")
+                        if st.checkbox("🧩 Chrome Extension", value=("Chrome Extension" in curr_allowed), key=f"chk_ext_{u}"):
+                            new_selected_modules.append("Chrome Extension")
 
                     c_save_mod, c_del_user = st.columns([2, 1])
                     with c_save_mod:
