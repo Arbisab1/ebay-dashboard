@@ -1775,7 +1775,7 @@ elif selected_page == "📈 Sales & Revenue Reports":
             st.info("No sales records found for this period. Click '🔄 Sync Sales Data' to fetch.")
 
 # ==========================================================
-# 4.5 EBAY FEES & PROFIT CALCULATOR (WITH MULTI-COUNTRY & PROMOTED ADS)
+# 4.5 EBAY FEES & PROFIT CALCULATOR (MANUAL FEES & COUNTRY SELECTOR)
 # ==========================================================
 elif selected_page == "💰 eBay Fees & Profit Calculator":
     st.markdown(
@@ -1787,11 +1787,11 @@ elif selected_page == "💰 eBay Fees & Profit Calculator":
     """,
         unsafe_allow_html=True,
     )
-    st.caption("Calculate exact eBay final value fees, promoted listing ads, shipping expenses, and net profit margins across international marketplaces.")
+    st.caption("Calculate net profit margins by entering your selling price, sourcing cost, shipping, promoted ads, and any custom fees.")
 
     calc_c1, calc_c2 = st.columns(2)
     with calc_c1:
-        st.markdown("#### 📥 Marketplace & Cost Inputs")
+        st.markdown("#### 📥 Pricing & Expense Inputs")
         
         # Country Selector
         country_choice = st.selectbox(
@@ -1800,37 +1800,28 @@ elif selected_page == "💰 eBay Fees & Profit Calculator":
             key="calc_country_select"
         )
         
-        # Currency symbol & default fee mapping based on country
         if "United States" in country_choice:
             currency_symbol = "$"
-            default_fee = 13.25
-            fixed_fee = 0.30
         elif "United Kingdom" in country_choice:
             currency_symbol = "£"
-            default_fee = 14.35
-            fixed_fee = 0.30
         elif "Australia" in country_choice:
             currency_symbol = "A$"
-            default_fee = 14.50
-            fixed_fee = 0.30
         else:
             currency_symbol = "€"
-            default_fee = 12.50
-            fixed_fee = 0.35
 
         selling_price = st.number_input(f"Target Selling Price ({currency_symbol}):", min_value=0.0, value=49.99, step=1.0)
         item_cost = st.number_input(f"Item Sourcing Cost ({currency_symbol}):", min_value=0.0, value=15.00, step=1.0)
         shipping_cost = st.number_input(f"Shipping Cost ({currency_symbol}):", min_value=0.0, value=4.50, step=0.50)
         
-        ebay_fee_pct = st.number_input("eBay Final Value Fee (%):", min_value=0.0, max_value=30.0, value=default_fee, step=0.25)
+        # Manual custom fee input instead of automatic calculation
+        custom_total_fees = st.number_input(f"Total eBay & Payment Fees ({currency_symbol}):", min_value=0.0, value=6.90, step=0.25, help="Enter your actual total eBay final value and payment processing fees.")
         ad_rate_pct = st.number_input("Promoted Listings Ad Rate (%):", min_value=0.0, max_value=50.0, value=2.0, step=0.5)
 
     with calc_c2:
         st.markdown("#### 📊 Financial Breakdown & Margins")
         
-        calculated_ebay_fee = (selling_price * (ebay_fee_pct / 100.0)) + fixed_fee
         calculated_ad_fee = selling_price * (ad_rate_pct / 100.0)
-        total_expenses = item_cost + shipping_cost + calculated_ebay_fee + calculated_ad_fee
+        total_expenses = item_cost + shipping_cost + custom_total_fees + calculated_ad_fee
         net_profit = selling_price - total_expenses
         net_margin = (net_profit / selling_price * 100.0) if selling_price > 0 else 0.0
 
@@ -1847,7 +1838,7 @@ elif selected_page == "💰 eBay Fees & Profit Calculator":
             <p style="margin: 4px 0;"><b>Selling Price:</b> {currency_symbol}{selling_price:,.2f}</p>
             <p style="margin: 4px 0;"><b>Sourcing Cost:</b> -{currency_symbol}{item_cost:,.2f}</p>
             <p style="margin: 4px 0;"><b>Shipping Expense:</b> -{currency_symbol}{shipping_cost:,.2f}</p>
-            <p style="margin: 4px 0;"><b>eBay Final Value Fee:</b> -{currency_symbol}{calculated_ebay_fee:,.2f}</p>
+            <p style="margin: 4px 0;"><b>Custom eBay/Payment Fees:</b> -{currency_symbol}{custom_total_fees:,.2f}</p>
             <p style="margin: 4px 0;"><b>Promoted Ads Fee:</b> -{currency_symbol}{calculated_ad_fee:,.2f}</p>
             <hr style="margin: 8px 0; border-color: #E2E8F0;">
             <p style="margin: 4px 0; font-size: 1.05rem;"><b>Total Expenses:</b> {currency_symbol}{total_expenses:,.2f}</p>
