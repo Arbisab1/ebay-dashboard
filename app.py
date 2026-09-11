@@ -256,7 +256,7 @@ def send_otp_email(receiver_email, otp_code, purpose="Verification"):
             "Regards,\neBay Portal Support Team"
         )
 
-        with smtplib.SMTP_SSL("smtp.gmail.com", 465, timeout=10) as server:
+        with smtplib.SMTP_SSL("smtp.gmail.com", 465, timeout=15) as server:
             server.login(SMTP_EMAIL, SMTP_PASSWORD.replace(" ", ""))
             server.send_message(msg)
         return True, "SENT"
