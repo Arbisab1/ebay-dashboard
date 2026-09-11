@@ -32,9 +32,9 @@ RUNAME = st.secrets.get(
     os.getenv("EBAY_RUNAME", "Nawaz_Iqbal-NawazIqb-eBayAu-pifoqzze"),
 )
 
-# Agar secrets mein na ho to yahan direct apna Gmail aur 16-digit App Password likh sakte hain:
-HARDCODED_GMAIL = ""          # e.g. "nawaziqbal@gmail.com"
-HARDCODED_APP_PASSWORD = ""   # e.g. "abcd efgh ijkl mnop"
+# --- CONFIGURED SMTP CREDENTIALS ---
+HARDCODED_GMAIL = "Nawazarbi69@gmail.com"
+HARDCODED_APP_PASSWORD = "lxkotbrfjmaozlnc"
 
 SMTP_EMAIL = st.secrets.get("SMTP_EMAIL", os.getenv("SMTP_EMAIL", HARDCODED_GMAIL)).strip()
 SMTP_PASSWORD = st.secrets.get("SMTP_PASSWORD", os.getenv("SMTP_PASSWORD", HARDCODED_APP_PASSWORD)).strip()
@@ -694,10 +694,7 @@ if not st.session_state.logged_in:
                                 if success:
                                     st.success(f"Verification code sent to {new_email}!")
                                 else:
-                                    if err_msg == "SMTP_NOT_SET":
-                                        st.warning(f"SMTP not configured. Temporary Test OTP: **{code}**")
-                                    else:
-                                        st.error(f"Gmail Error: {err_msg}. Temporary Test OTP: **{code}**")
+                                    st.error(f"Gmail Error: {err_msg}")
                                 time.sleep(1)
                                 st.rerun()
                         else:
@@ -741,7 +738,7 @@ if not st.session_state.logged_in:
                         if ok:
                             st.success("New code sent!")
                         else:
-                            st.warning(f"New Test OTP: **{new_code}**")
+                            st.error(f"Error: {em}")
                         time.sleep(1)
                         st.rerun()
 
@@ -767,20 +764,17 @@ if not st.session_state.logged_in:
                             target_email = data.get("email")
                             break
 
-                    if matched_user:
+                    if matched_user and target_email:
                         code = str(random.randint(100000, 999999))
                         st.session_state.otp_code = code
                         st.session_state.otp_target_user = matched_user
                         st.session_state.otp_target_email = target_email
                         
-                        if target_email:
-                            ok, em = send_otp_email(target_email, code, purpose="Password Reset")
-                            if ok:
-                                st.success(f"OTP sent to {target_email[:3]}***@{target_email.split('@')[1]}!")
-                            else:
-                                st.warning(f"Email could not send. Temporary OTP: **{code}**")
+                        ok, em = send_otp_email(target_email, code, purpose="Password Reset")
+                        if ok:
+                            st.success(f"OTP sent to {target_email[:3]}***@{target_email.split('@')[1]}!")
                         else:
-                            st.warning(f"No email attached. Temporary OTP: **{code}**")
+                            st.error(f"Error: {em}")
                             
                         time.sleep(1)
                         st.rerun()
@@ -808,7 +802,7 @@ if not st.session_state.logged_in:
                         st.session_state.otp_code = new_code
                         if st.session_state.otp_target_email:
                             send_otp_email(st.session_state.otp_target_email, new_code, purpose="Password Reset")
-                        st.warning(f"New OTP Code: **{new_code}**")
+                        st.success("New code sent!")
                         time.sleep(1)
                         st.rerun()
 
