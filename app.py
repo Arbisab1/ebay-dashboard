@@ -593,6 +593,35 @@ if "allowed_modules" not in st.session_state:
 
 query_params = st.query_params
 
+# --- DIRECT ORDER SYNC API HANDLER FOR EXTENSION ---
+if "api_order_id" in query_params:
+    target_oid = query_params["api_order_id"]
+    found_order_data = None
+    for s_name, tokens in stores.items():
+        access_token = tokens.get("access_token")
+        if access_token:
+            try:
+                headers = {"Authorization": f"Bearer {access_token}"}
+                r = requests.get(f"https://api.ebay.com/sell/fulfillment/v1/order/{target_oid}", headers=headers)
+                if r.status_code == 200:
+                    o = r.json()
+                    ship_to = o.get("fulfillmentStartInstructions", [{}])[0].get("shippingStep", {}).get("shipTo", {})
+                    contact = ship_to.get("contactAddress", {})
+                    found_order_data = {
+                        "orderId": target_oid,
+                        "buyerName": ship_to.get("fullName", o.get("buyer", {}).get("username", "Buyer")),
+                        "phone": ship_to.get("primaryPhone", {}).get("phoneNumber", "1234567890"),
+                        "street": contact.get("addressLine1", ""),
+                        "city": contact.get("city", ""),
+                        "postalCode": contact.get("postalCode", "")
+                    }
+                    break
+            except Exception:
+                pass
+    
+    st.json(found_order_data if found_order_data else {"error": "Order not found"})
+    st.stop()
+
 if not st.session_state.logged_in and "session_user" in query_params:
     saved_user = query_params["session_user"]
     if saved_user == "admin":
@@ -1239,6 +1268,15 @@ if "Orders &" in selected_page:
                 tracking_num = "Uploaded on eBay"
                 carrier_name = "Courier"
 
+                for inst in o.get("fulfillmentStartInstructions", []):
+                    step = inst.get("shippingStep", {})
+                    track_info = step.get("shipmentTracking", {}).get("trackingNumber")
+                    carrier_info = step.get("shippingCarrierCode")
+                    if track_info:
+                        tracking_num = track_info
+                    if carrier_info:
+                        carrier_name = carrier_info
+
                 ship_to_obj = o.get("fulfillmentStartInstructions", [{}])[0].get("shippingStep", {}).get("shipTo", {})
                 contact_obj = ship_to_obj.get("contactAddress", {})
                 addr_payload = {
@@ -1272,7 +1310,7 @@ if "Orders &" in selected_page:
                         st.write(f"**Item ID:** `{item_id}`")
                         st.write(f"**Carrier:** `{carrier_name}`")
                         st.write(f"**Tracking:** `{tracking_num}`")
-                        st.markdown(f"**📋 Extension Bridge Data:**")
+                        st.markdown(f"**📋 1-Click Extension Data (Copy & Paste in Extension):**")
                         st.code(json_snippet, language="json")
 
                     with c_act:
@@ -1885,11 +1923,11 @@ elif (
                         st.rerun()
 
 # ==========================================================
-# 5.5 CHROME EXTENSION DOWNLOAD HUB (CLIPBOARD BRIDGE)
+# 5.5 CHROME EXTENSION DOWNLOAD HUB (REACT COMPLIANT BRIDGE)
 # ==========================================================
 elif "Download Chrome Extension" in selected_page:
     st.markdown("## 🧩 Auto-Fulfillment Chrome Extension Hub")
-    st.caption("Download and install our official browser extension for 1-click clipboard fulfillment bridge.")
+    st.caption("Download and install our official browser extension for 1-click React-compatible auto-filling.")
 
     col_ex1, col_ex2 = st.columns([1.5, 1])
 
@@ -1901,15 +1939,15 @@ elif "Download Chrome Extension" in selected_page:
         3. Open Google Chrome and go to `chrome://extensions/`.
         4. Turn on **Developer mode** (top right corner).
         5. Click **Load unpacked** (top left) and select the extracted extension folder.
-        6. In your portal orders view, copy the order snippet and click **Paste & Auto-Fill** in the extension popup for instant checkout!
+        6. In your portal orders view, copy the order snippet and click **Paste & Auto-Fill** on AliExpress checkout page!
         """)
         
         ext_manifest = json.dumps({
             "manifest_version": 3,
-            "name": "eBay Clipboard Fulfillment Bridge",
-            "version": "3.1",
-            "description": "Fulfill supplier orders seamlessly via secure clipboard bridge.",
-            "permissions": ["storage", "activeTab", "scripting", "clipboardRead"],
+            "name": "eBay React Checkout Autofill",
+            "version": "4.0",
+            "description": "Fulfill AliExpress and supplier orders seamlessly.",
+            "permissions": ["storage", "activeTab", "scripting"],
             "host_permissions": ["https://*.aliexpress.com/*", "https://*.cjdropshipping.com/*", "https://*.amazon.com/*"],
             "action": {"default_popup": "popup.html"},
             "content_scripts": [{
@@ -1924,25 +1962,38 @@ elif "Download Chrome Extension" in selected_page:
           if (request.action === "autofill_clipboard") {
             const data = request.orderData;
             try {
-              const setNativeValue = (element, value) => {
+              const setReactValue = (element, value) => {
+                if (!element) return;
+                const lastValue = element.value;
                 element.value = value;
+                const tracker = element._valueTracker;
+                if (tracker) {
+                  tracker.setValue(lastValue);
+                }
                 element.dispatchEvent(new Event('input', { bubbles: true }));
                 element.dispatchEvent(new Event('change', { bubbles: true }));
+                element.dispatchEvent(new KeyboardEvent('keydown', { bubbles: true }));
+                element.dispatchEvent(new KeyboardEvent('keypress', { bubbles: true }));
+                element.dispatchEvent(new KeyboardEvent('keyup', { bubbles: true }));
               };
-              const inputs = {
-                name: document.querySelector('input[name="contactName"], input[id*="contactName"], input[placeholder*="Contact Name"], input[placeholder*="Name"]'),
-                phone: document.querySelector('input[name="mobileNo"], input[id*="mobileNo"], input[placeholder*="Phone"], input[type="tel"]'),
-                street: document.querySelector('input[name="address"], textarea[placeholder*="Street"], input[placeholder*="Address"]'),
-                city: document.querySelector('input[name="city"], input[placeholder*="City"]'),
-                zip: document.querySelector('input[name="zip"], input[placeholder*="Post"], input[placeholder*="Zip"]')
-              };
-              if (inputs.name) setNativeValue(inputs.name, data.buyerName);
-              if (inputs.phone) setNativeValue(inputs.phone, data.phone);
-              if (inputs.street) setNativeValue(inputs.street, data.street);
-              if (inputs.city) setNativeValue(inputs.city, data.city);
-              if (inputs.zip) setNativeValue(inputs.zip, data.postalCode);
+
+              // Comprehensive query selectors covering AliExpress React checkout inputs
+              const nameInput = document.querySelector('input[name="contactName"], input[id*="contactName"], input[placeholder*="Contact Name"], input[placeholder*="Name"]');
+              const phoneInput = document.querySelector('input[name="mobileNo"], input[id*="mobileNo"], input[placeholder*="Phone"], input[type="tel"]');
+              const streetInput = document.querySelector('input[name="address"], textarea[placeholder*="Street"], input[placeholder*="Address"], textarea[id*="address"]');
+              const cityInput = document.querySelector('input[name="city"], input[placeholder*="City"], input[id*="city"]');
+              const zipInput = document.querySelector('input[name="zip"], input[placeholder*="Post"], input[placeholder*="Zip"], input[id*="zip"]');
+
+              if (nameInput) setReactValue(nameInput, data.buyerName);
+              if (phoneInput) setReactValue(phoneInput, data.phone);
+              if (streetInput) setReactValue(streetInput, data.street);
+              if (cityInput) setReactValue(cityInput, data.city);
+              if (zipInput) setReactValue(zipInput, data.postalCode);
+
               sendResponse({ status: "success" });
-            } catch (err) { sendResponse({ status: "error", message: err.toString() }); }
+            } catch (err) { 
+              sendResponse({ status: "error", message: err.toString() }); 
+            }
           }
         });
         """
@@ -1962,12 +2013,12 @@ elif "Download Chrome Extension" in selected_page:
 </style>
 </head>
 <body>
-  <h3>📦 Clipboard Auto-Fill</h3>
+  <h3>📦 React Checkout Auto-Fill</h3>
   <div class="card">
-    <p>Paste Order JSON / Address:</p>
-    <textarea id="orderJsonInput" placeholder='Paste order data or click copy in portal...'></textarea>
+    <p>Paste Order JSON from Portal:</p>
+    <textarea id="orderJsonInput" placeholder='Paste JSON here...'></textarea>
   </div>
-  <button id="btnPasteFill">⚡ Paste & Auto-Fill Checkout</button>
+  <button id="btnPasteFill">⚡ Auto-Fill Address</button>
   <p style="margin-top: 8px; font-size: 11px;">Status: <span id="lblStatus">Ready</span></p>
   <script src="popup.js"></script>
 </body>
@@ -2016,10 +2067,10 @@ elif "Download Chrome Extension" in selected_page:
 
     with col_ex2:
         st.markdown("""
-        ### 🔒 Secure & Verified
-        * **Zero Connection Errors:** Eliminates all network/CORS blockages completely.
-        * **Instant 1-Click Fill:** Works seamlessly on AliExpress, CJ, and Amazon checkouts.
-        * **Compatible With:** Google Chrome, Microsoft Edge, and Brave browsers.
+        ### 🔒 React Framework Compatible
+        * **Virtual DOM Bypass:** Triggers React state trackers so fields stay updated.
+        * **Zero Connection Errors:** No server timeouts or CORS blocks.
+        * **Compatible With:** AliExpress, CJ Dropshipping, and Amazon checkouts.
         """)
 
 # ==========================================================
