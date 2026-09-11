@@ -60,7 +60,7 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-# --- STRICT HIGH-CONTRAST READABILITY STYLING ---
+# --- PROFESSIONAL SAAS ENTERPRISE UI STYLING ---
 st.markdown(
     f"""
 <style>
@@ -68,46 +68,32 @@ st.markdown(
         display: none !important;
     }}
 
-    /* Global Dark Cybernetic Background */
+    /* Global Soft Professional SaaS Background */
     html, body, .stApp {{
-        background: linear-gradient(rgba(10, 25, 47, 0.90), rgba(15, 23, 42, 0.94)),
-                    url("https://images.unsplash.com/photo-1451187580459-43490279c0fa?auto=format&fit=crop&w=1920&q=80") no-repeat center center fixed !important;
-        background-size: cover !important;
+        background-color: #F8FAFC !important;
+        color: #0F172A !important;
         font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif !important;
-        color: #F8FAFC !important;
     }}
 
     .block-container {{
-        padding-top: 1.5rem !important;
-        padding-bottom: 2.5rem !important;
+        padding-top: 1.8rem !important;
+        padding-bottom: 3rem !important;
     }}
 
-    /* All Headings, Paragraphs, and Labels in Main Content Area */
-    .block-container h1, .block-container h2, .block-container h3, 
-    .block-container h4, .block-container h5, .block-container h6, 
-    .block-container p, .block-container span, .block-container label {{
-        color: #FFFFFF !important;
-        text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5) !important;
-    }}
-
-    /* Containers, Metrics, Expanders & Forms with Solid High-Contrast Backgrounds */
+    /* Clean Card Containers & Forms */
     div[data-testid="stMetric"], .stExpander, div[data-testid="stForm"], div.row-widget.stRadio {{
         background-color: #FFFFFF !important;
-        border: 1px solid #CBD5E1 !important;
+        border: 1px solid #E2E8F0 !important;
         border-radius: 12px !important;
-        box-shadow: 0 8px 30px rgba(0, 0, 0, 0.35) !important;
+        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03) !important;
+        padding: 16px !important;
     }}
 
-    /* Text inside forms and expanders must be pitch black for readability */
-    div[data-testid="stForm"] p, div[data-testid="stForm"] label, div[data-testid="stForm"] span, 
-    .stExpander p, .stExpander span, .stExpander label, .stExpander div {{
+    /* Typography & Headings */
+    h1, h2, h3, h4, h5, h6, p, span, label, div {{
         color: #0F172A !important;
-        text-shadow: none !important;
     }}
 
-    div[data-testid="stMetric"] {{
-        padding: 16px 20px !important;
-    }}
     div[data-testid="stMetricValue"] {{
         font-size: 1.85rem !important;
         font-weight: 700 !important;
@@ -118,57 +104,54 @@ st.markdown(
         font-weight: 600 !important;
     }}
 
-    /* Primary Buttons */
+    /* Primary Action Buttons */
     button[kind="primary"] {{
-        background: linear-gradient(135deg, #2563EB, #1D4ED8) !important;
+        background-color: #2563EB !important;
         color: #FFFFFF !important;
         font-weight: 600 !important;
         border: none !important;
         border-radius: 8px !important;
-        box-shadow: 0 2px 6px rgba(37, 99, 235, 0.4) !important;
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1) !important;
     }}
     button[kind="primary"] p {{
         color: #FFFFFF !important;
-        text-shadow: none !important;
     }}
 
     /* Secondary Buttons */
     button[kind="secondary"] {{
         background-color: #FFFFFF !important;
-        border: 1px solid #94A3B8 !important;
+        border: 1px solid #CBD5E1 !important;
         color: #1E293B !important;
         border-radius: 8px !important;
         font-weight: 600 !important;
     }}
     button[kind="secondary"] p {{
         color: #1E293B !important;
-        text-shadow: none !important;
     }}
 
-    /* Input Fields & Dropdowns */
+    /* Form Inputs & Selects */
     input, textarea, select, div[data-baseweb="select"] {{
         background-color: #FFFFFF !important;
         color: #0F172A !important;
-        border-color: #94A3B8 !important;
+        border-color: #CBD5E1 !important;
         border-radius: 8px !important;
         font-weight: 500 !important;
     }}
     input::placeholder {{
-        color: #64748B !important;
+        color: #94A3B8 !important;
     }}
     div[data-baseweb="select"] * {{
         color: #0F172A !important;
         background-color: #FFFFFF !important;
     }}
 
-    /* Sidebar Styling */
+    /* Clean Sidebar */
     section[data-testid="stSidebar"] {{
         background-color: #FFFFFF !important;
         border-right: 1px solid #E2E8F0 !important;
     }}
     section[data-testid="stSidebar"] * {{
         color: #0F172A !important;
-        text-shadow: none !important;
     }}
 
     .floating-whatsapp {{
@@ -181,7 +164,7 @@ st.markdown(
         padding: 10px 18px;
         font-size: 14px;
         font-weight: 600;
-        box-shadow: 0 4px 15px rgba(0, 0, 0, 0.25);
+        box-shadow: 0 4px 15px rgba(0, 0, 0, 0.15);
         z-index: 999999;
         display: flex;
         align-items: center;
@@ -631,7 +614,7 @@ if not st.session_state.logged_in:
     with c2:
         st.markdown(
             """
-        <div style="text-align: center; padding: 22px 20px 14px 20px; background: rgba(255, 255, 255, 0.98); border: 1px solid #CBD5E1; border-radius: 12px; box-shadow: 0 8px 30px rgba(0,0,0,0.3); margin-bottom: 15px;">
+        <div style="text-align: center; padding: 22px 20px 14px 20px; background: #FFFFFF; border: 1px solid #CBD5E1; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.08); margin-bottom: 15px;">
             <img src="https://upload.wikimedia.org/wikipedia/commons/1/1b/EBay_logo.svg" width="95" style="margin-bottom: 6px;">
             <h3 style="margin: 0; color: #0F172A; font-weight: 700;">eBay Automation Portal</h3>
             <p style="margin-top: 4px; color: #475569; font-size: 0.85rem;">Secure Client Workspace & Automated Order Hub</p>
@@ -1014,7 +997,7 @@ if "Orders &" in selected_page:
         f"""
     <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 8px;">
         <img src="https://upload.wikimedia.org/wikipedia/commons/1/1b/EBay_logo.svg" width="75">
-        <h2 style="margin: 0; color: #FFFFFF; font-weight: 700;">{selected_page}</h2>
+        <h2 style="margin: 0; color: #0F172A; font-weight: 700;">{selected_page}</h2>
     </div>
     """,
         unsafe_allow_html=True,
@@ -1030,7 +1013,7 @@ if "Orders &" in selected_page:
         tokens = accessible_stores[active_store_name]
 
         st.divider()
-        st.markdown("<h4 style='color: white;'>🔄 Sync Orders from eBay</h4>", unsafe_allow_html=True)
+        st.markdown("#### 🔄 Sync Orders from eBay")
         
         fetch_all_orders_toggle = st.checkbox("📋 Fetch ALL Orders (No Date Limit)", value=False, key="all_orders_toggle")
         
@@ -1218,7 +1201,7 @@ if "Orders &" in selected_page:
                 st.rerun()
 
             st.divider()
-            st.markdown("<h3 style='color: white;'>📋 Order List & Direct Actions</h3>", unsafe_allow_html=True)
+            st.markdown("### 📋 Order List & Direct Actions")
 
             for o in display_orders:
                 order_id = o.get("orderId", "")
@@ -1309,7 +1292,7 @@ elif selected_page == "🔍 Product Hunting & Research":
         """
     <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 8px;">
         <img src="https://upload.wikimedia.org/wikipedia/commons/1/1b/EBay_logo.svg" width="75">
-        <h2 style="margin: 0; color: #FFFFFF; font-weight: 700;">Product Hunting & Competitor Policy Audit</h2>
+        <h2 style="margin: 0; color: #0F172A; font-weight: 700;">Product Hunting & Competitor Policy Audit</h2>
     </div>
     """,
         unsafe_allow_html=True,
@@ -1317,7 +1300,7 @@ elif selected_page == "🔍 Product Hunting & Research":
     st.caption("Scan marketplace competitors, evaluate price benchmarks, and audit competitor listing policy violations.")
 
     with st.container():
-        st.markdown("<h4 style='color: #0F172A;'>🔎 Research Product Niche / Keyword</h4>", unsafe_allow_html=True)
+        st.markdown("#### 🔎 Research Product Niche / Keyword")
         r_col1, r_col2, r_col3, r_col4 = st.columns([3, 1.5, 1.5, 1.2])
 
         with r_col1:
@@ -1414,7 +1397,7 @@ elif selected_page == "🔍 Product Hunting & Research":
             primary_curr = df_hunt_raw["Currency"].iloc[0] if not df_hunt_raw.empty else "USD"
 
             st.divider()
-            st.markdown(f"<h3 style='color: white;'>📊 Market & Compliance Summary for `{search_query}`</h3>", unsafe_allow_html=True)
+            st.markdown(f"### 📊 Market & Compliance Summary for `{search_query}`")
 
             hk1, hk2, hk3, hk4 = st.columns(4)
             hk1.metric("Average Market Price", f"{primary_curr} {avg_price:,.2f}")
@@ -1474,7 +1457,7 @@ elif selected_page == "⚠️ Listing Violations & Policy":
         """
     <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 8px;">
         <img src="https://upload.wikimedia.org/wikipedia/commons/1/1b/EBay_logo.svg" width="75">
-        <h2 style="margin: 0; color: #FFFFFF; font-weight: 700;">Listing Violations & Policy Health</h2>
+        <h2 style="margin: 0; color: #0F172A; font-weight: 700;">Listing Violations & Policy Health</h2>
     </div>
     """,
         unsafe_allow_html=True,
@@ -1611,7 +1594,7 @@ elif selected_page == "📈 Sales & Revenue Reports":
         """
     <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 8px;">
         <img src="https://upload.wikimedia.org/wikipedia/commons/1/1b/EBay_logo.svg" width="75">
-        <h2 style="margin: 0; color: #FFFFFF; font-weight: 700;">Sales & Subtotal Reports</h2>
+        <h2 style="margin: 0; color: #0F172A; font-weight: 700;">Sales & Subtotal Reports</h2>
     </div>
     """,
         unsafe_allow_html=True,
@@ -1627,7 +1610,7 @@ elif selected_page == "📈 Sales & Revenue Reports":
         tokens = accessible_stores[active_sales_store]
 
         st.divider()
-        st.markdown("<h4 style='color: white;'>📅 Report Date Range</h4>", unsafe_allow_html=True)
+        st.markdown("#### 📅 Report Date Range")
         
         fetch_all_sales_toggle = st.checkbox("📋 Fetch All-Time Sales (No Date Limit)", value=False, key="all_sales_toggle")
         
