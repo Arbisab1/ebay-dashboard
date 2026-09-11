@@ -32,7 +32,6 @@ RUNAME = st.secrets.get(
     os.getenv("EBAY_RUNAME", "Nawaz_Iqbal-NawazIqb-eBayAu-pifoqzze"),
 )
 
-# SMTP Config for sending OTPs
 SMTP_EMAIL = st.secrets.get("SMTP_EMAIL", os.getenv("SMTP_EMAIL", ""))
 SMTP_PASSWORD = st.secrets.get("SMTP_PASSWORD", os.getenv("SMTP_PASSWORD", ""))
 
@@ -217,6 +216,14 @@ DEFAULT_TEMPLATES = {
         "Thank you!"
     ),
 }
+
+ALL_MODULES = [
+    "Orders & Auto-Messaging",
+    "Product Hunting & Research",
+    "Listing Violations & Policy",
+    "Sales & Revenue Reports",
+    "Connect eBay Store"
+]
 
 # --- PERSISTENCE & SECURITY HELPERS ---
 def hash_pass(password):
@@ -584,11 +591,11 @@ if "logged_in" not in st.session_state:
     st.session_state.username = None
     st.session_state.role = None
     st.session_state.assigned_stores = []
+    st.session_state.allowed_modules = ALL_MODULES
 
 if "auth_mode" not in st.session_state:
     st.session_state.auth_mode = "signin"
 
-# OTP state tracking for both Signup & Forgot Password
 if "otp_code" not in st.session_state:
     st.session_state.otp_code = None
 if "otp_target_user" not in st.session_state:
@@ -635,6 +642,7 @@ if not st.session_state.logged_in:
                         st.session_state.username = "admin"
                         st.session_state.role = "admin"
                         st.session_state.assigned_stores = ["ALL"]
+                        st.session_state.allowed_modules = ALL_MODULES
                         st.success("Admin Login Successful!")
                         st.rerun()
 
@@ -646,6 +654,7 @@ if not st.session_state.logged_in:
                         st.session_state.username = uname
                         st.session_state.role = users_db[uname].get("role", "client")
                         st.session_state.assigned_stores = users_db[uname].get("assigned_stores", [])
+                        st.session_state.allowed_modules = users_db[uname].get("allowed_modules", ALL_MODULES)
                         st.success(f"Welcome, {uname}!")
                         st.rerun()
                     else:
@@ -688,6 +697,7 @@ if not st.session_state.logged_in:
                                         "password": hash_pass(new_pword),
                                         "role": "client",
                                         "assigned_stores": [store_label],
+                                        "allowed_modules": ALL_MODULES,  # Full access by default
                                     }
                                     st.success(f"Verification code sent to {new_email}!")
                                     time.sleep(1)
@@ -697,7 +707,6 @@ if not st.session_state.logged_in:
                         else:
                             st.warning("Please fill in all fields.")
             else:
-                # Verify Registration OTP
                 temp_info = st.session_state.signup_temp_data
                 st.info(f"We've sent a 6-digit code to **{temp_info['email']}** to complete your registration.")
                 reg_otp_input = st.text_input("Enter 6-Digit OTP:", max_chars=6, key="reg_otp_in").strip()
@@ -711,6 +720,7 @@ if not st.session_state.logged_in:
                                 "password": temp_info["password"],
                                 "role": temp_info["role"],
                                 "assigned_stores": temp_info["assigned_stores"],
+                                "allowed_modules": temp_info.get("allowed_modules", ALL_MODULES),
                             }
                             save_json(USERS_FILE, users_db)
 
@@ -718,6 +728,7 @@ if not st.session_state.logged_in:
                             st.session_state.username = temp_info["username"]
                             st.session_state.role = "client"
                             st.session_state.assigned_stores = temp_info["assigned_stores"]
+                            st.session_state.allowed_modules = temp_info.get("allowed_modules", ALL_MODULES)
                             st.session_state.otp_code = None
                             st.session_state.signup_temp_data = None
                             st.success("Account successfully verified and registered!")
@@ -735,7 +746,6 @@ if not st.session_state.logged_in:
         elif st.session_state.auth_mode == "forgot":
             st.markdown("#### 🔐 Password Reset via Email OTP")
             
-            # Step A: Request OTP
             if not st.session_state.otp_code:
                 f_user = st.text_input("Enter your Username or Registered Email:", key="f_user_in").strip()
                 if st.button("📩 Send 6-Digit OTP", type="primary", use_container_width=True):
@@ -762,7 +772,6 @@ if not st.session_state.logged_in:
                     else:
                         st.error("No account found with this username or email.")
 
-            # Step B: Verify OTP
             elif not st.session_state.otp_verified:
                 st.info(f"An OTP was sent to the registered email for **{st.session_state.otp_target_user}**.")
                 entered_otp = st.text_input("Enter 6-digit OTP Code:", max_chars=6, key="otp_in").strip()
@@ -782,7 +791,6 @@ if not st.session_state.logged_in:
                         st.session_state.otp_code = None
                         st.rerun()
 
-            # Step C: Set New Password
             else:
                 st.success(f"Identity confirmed for `{st.session_state.otp_target_user}`.")
                 new_reset_pass = st.text_input("Enter New Password:", type="password", key="nrp_in").strip()
@@ -804,7 +812,6 @@ if not st.session_state.logged_in:
                     else:
                         st.error("Passwords do not match or are empty.")
 
-        # Auth Mode Switcher Bar
         st.write("")
         col_sw1, col_sw2 = st.columns(2)
         with col_sw1:
@@ -836,7 +843,7 @@ else:
         if k in st.session_state.assigned_stores
     }
 
-# --- SIDEBAR (ORDERED EXACTLY AS REQUESTED) ---
+# --- SIDEBAR (DYNAMICALLY FILTERED BY USER'S ALLOWED MODULES) ---
 with st.sidebar:
     st.markdown(
         """
@@ -857,6 +864,7 @@ with st.sidebar:
         st.session_state.username = None
         st.session_state.role = None
         st.session_state.assigned_stores = []
+        st.session_state.allowed_modules = ALL_MODULES
         st.rerun()
 
     st.divider()
@@ -881,7 +889,11 @@ with st.sidebar:
             if auth_ok:
                 if n_p == cn_p and len(n_p) > 0:
                     if u_key not in users_db:
-                        users_db[u_key] = {"role": st.session_state.role, "assigned_stores": st.session_state.assigned_stores}
+                        users_db[u_key] = {
+                            "role": st.session_state.role,
+                            "assigned_stores": st.session_state.assigned_stores,
+                            "allowed_modules": st.session_state.allowed_modules
+                        }
                     users_db[u_key]["password"] = hash_pass(n_p)
                     save_json(USERS_FILE, users_db)
                     st.success("Password Updated Successfully!")
@@ -894,28 +906,44 @@ with st.sidebar:
 
     st.divider()
 
-    # 1. Orders -> 2. Product Hunting -> 3. Listing Violations -> 4. Sales Reports -> 5. Link Stores -> 6. Registered Clients -> 7. Global Templates
-    if st.session_state.role == "admin":
-        nav_options = [
-            "All Stores Orders & Messaging",
-            "🔍 Product Hunting & Research",
-            "⚠️ Listing Violations & Policy",
-            "📈 Sales & Revenue Reports",
-            "➕ Link & Manage eBay Stores",
-            "👥 Registered Clients Overview",
-            "📝 Global Message Templates",
-        ]
-    else:
-        nav_options = [
-            "My Orders & Auto-Messaging",
-            "🔍 Product Hunting & Research",
-            "⚠️ Listing Violations & Policy",
-            "📈 Sales & Revenue Reports",
-            "➕ Connect My eBay Store",
-            "📝 My Message Templates",
-        ]
+    # DYNAMIC MENU CONSTRUCTION
+    user_modules = st.session_state.allowed_modules if st.session_state.role != "admin" else ALL_MODULES
+    nav_options = []
 
-    selected_page = st.radio("Menu", nav_options, label_visibility="collapsed")
+    # 1. Orders
+    if "Orders & Auto-Messaging" in user_modules or st.session_state.role == "admin":
+        nav_options.append("All Stores Orders & Messaging" if st.session_state.role == "admin" else "My Orders & Auto-Messaging")
+
+    # 2. Hunting
+    if "Product Hunting & Research" in user_modules or st.session_state.role == "admin":
+        nav_options.append("🔍 Product Hunting & Research")
+
+    # 3. Violations
+    if "Listing Violations & Policy" in user_modules or st.session_state.role == "admin":
+        nav_options.append("⚠️ Listing Violations & Policy")
+
+    # 4. Sales Reports
+    if "Sales & Revenue Reports" in user_modules or st.session_state.role == "admin":
+        nav_options.append("📈 Sales & Revenue Reports")
+
+    # 5. Connect Store
+    if "Connect eBay Store" in user_modules or st.session_state.role == "admin":
+        nav_options.append("➕ Link & Manage eBay Stores" if st.session_state.role == "admin" else "➕ Connect My eBay Store")
+
+    # 6. Admin Only Overview
+    if st.session_state.role == "admin":
+        nav_options.append("👥 Registered Clients Overview")
+
+    # 7. Message Templates
+    if "Orders & Auto-Messaging" in user_modules or st.session_state.role == "admin":
+        nav_options.append("📝 Global Message Templates" if st.session_state.role == "admin" else "📝 My Message Templates")
+
+    if not nav_options:
+        st.warning("No active modules assigned to your account. Please contact Administrator.")
+        selected_page = "No Access"
+    else:
+        selected_page = st.radio("Menu", nav_options, label_visibility="collapsed")
+        
     st.divider()
 
     st.markdown(
@@ -1233,7 +1261,7 @@ if "Orders &" in selected_page:
              st.info("No orders found for the selected store and date range.")
 
 # ==========================================================
-# 2. PRODUCT HUNTING & RESEARCH (WITH COMPETITOR AUDIT)
+# 2. PRODUCT HUNTING & RESEARCH
 # ==========================================================
 elif selected_page == "🔍 Product Hunting & Research":
     st.markdown(
@@ -1805,15 +1833,15 @@ elif (
                         st.rerun()
 
 # ==========================================================
-# 6. REGISTERED CLIENTS OVERVIEW (ADMIN ONLY)
+# 6. REGISTERED CLIENTS OVERVIEW (WITH MODULE PERMISSION CONTROLS)
 # ==========================================================
 elif (
     selected_page == "👥 Registered Clients Overview"
     and st.session_state.role == "admin"
 ):
-    st.markdown("## 👥 Self-Registered Clients & Stores")
+    st.markdown("## 👥 Self-Registered Clients & Service Controls")
     st.caption(
-        "Monitor registered clients, verified recovery emails, and eBay connection status."
+        "Manage client accounts, verified emails, and enable/disable individual services per client."
     )
 
     client_users = {k: v for k, v in users_db.items() if k != "admin"}
@@ -1825,11 +1853,12 @@ elif (
             assigned = data.get("assigned_stores", ["N/A"])[0]
             email_addr = data.get("email", "Not provided")
             is_connected = assigned in stores
+            curr_allowed = data.get("allowed_modules", ALL_MODULES)
 
             with st.container():
                 st.markdown(
                     f"""
-                <div style="padding: 16px 20px; background: #FFFFFF; border: 1px solid #CBD5E1; border-radius: 10px; margin-bottom: 12px;">
+                <div style="padding: 16px 20px; background: #FFFFFF; border: 1px solid #CBD5E1; border-radius: 10px; margin-bottom: 8px;">
                     <div style="display: flex; justify-content: space-between; align-items: flex-start;">
                         <div>
                             <strong style="font-size: 1.15rem; color: #0F172A;">👤 Client: {u}</strong><br>
@@ -1847,19 +1876,43 @@ elif (
                     unsafe_allow_html=True,
                 )
 
-                col_cd1, _ = st.columns([1, 4])
-                with col_cd1:
-                    if st.button(
-                        f"🗑️ Delete Client",
-                        key=f"del_client_{u}",
-                        type="secondary",
-                        use_container_width=True
-                    ):
-                        del users_db[u]
-                        save_json(USERS_FILE, users_db)
-                        st.success(f"Client '{u}' removed!")
-                        time.sleep(1)
-                        st.rerun()
+                # PERMISSIONS MANAGEMENT EXPANDER
+                with st.expander(f"⚙️ Manage Services & Access for {u}"):
+                    st.write("**Select Services to Enable for this Client:**")
+                    
+                    new_selected_modules = []
+                    col_m1, col_m2 = st.columns(2)
+                    
+                    with col_m1:
+                        if st.checkbox("Orders & Auto-Messaging", value=("Orders & Auto-Messaging" in curr_allowed), key=f"chk_ord_{u}"):
+                            new_selected_modules.append("Orders & Auto-Messaging")
+                        if st.checkbox("🔍 Product Hunting & Research", value=("Product Hunting & Research" in curr_allowed), key=f"chk_hunt_{u}"):
+                            new_selected_modules.append("Product Hunting & Research")
+                        if st.checkbox("⚠️ Listing Violations & Policy", value=("Listing Violations & Policy" in curr_allowed), key=f"chk_viol_{u}"):
+                            new_selected_modules.append("Listing Violations & Policy")
+                    
+                    with col_m2:
+                        if st.checkbox("📈 Sales & Revenue Reports", value=("Sales & Revenue Reports" in curr_allowed), key=f"chk_sales_{u}"):
+                            new_selected_modules.append("Sales & Revenue Reports")
+                        if st.checkbox("➕ Connect eBay Store", value=("Connect eBay Store" in curr_allowed), key=f"chk_store_{u}"):
+                            new_selected_modules.append("Connect eBay Store")
+
+                    c_save_mod, c_del_user = st.columns([2, 1])
+                    with c_save_mod:
+                        if st.button("💾 Save Client Services", key=f"btn_save_mod_{u}", type="primary"):
+                            users_db[u]["allowed_modules"] = new_selected_modules
+                            save_json(USERS_FILE, users_db)
+                            st.success(f"Access updated for {u}!")
+                            time.sleep(1)
+                            st.rerun()
+
+                    with c_del_user:
+                        if st.button(f"🗑️ Delete Account", key=f"del_client_{u}", type="secondary"):
+                            del users_db[u]
+                            save_json(USERS_FILE, users_db)
+                            st.success(f"Client '{u}' removed!")
+                            time.sleep(1)
+                            st.rerun()
 
                 st.divider()
 
