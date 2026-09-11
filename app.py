@@ -579,11 +579,16 @@ users_db = load_json(USERS_FILE, {})
 templates = load_json(TEMPLATES_FILE, DEFAULT_TEMPLATES)
 logs = load_json(LOGS_FILE, {})
 
+# --- PERSISTENT SESSION STATE INITIALIZATION ---
 if "logged_in" not in st.session_state:
     st.session_state.logged_in = False
+if "username" not in st.session_state:
     st.session_state.username = None
+if "role" not in st.session_state:
     st.session_state.role = None
+if "assigned_stores" not in st.session_state:
     st.session_state.assigned_stores = []
+if "allowed_modules" not in st.session_state:
     st.session_state.allowed_modules = ALL_MODULES
 
 if "auth_mode" not in st.session_state:
@@ -1842,7 +1847,7 @@ elif (
                         unsafe_allow_html=True,
                     )
                     if st.button(
-                        f"🗑️ Disdisconnect {s_name}",
+                        f"🗑️ Disconnect {s_name}",
                         key=f"del_store_{s_name}",
                         type="secondary",
                     ):
@@ -1854,7 +1859,7 @@ elif (
                         st.rerun()
 
 # ==========================================================
-# 5.5 CHROME EXTENSION DOWNLOAD HUB (FIXED)
+# 5.5 CHROME EXTENSION DOWNLOAD HUB
 # ==========================================================
 elif "Download Chrome Extension" in selected_page:
     st.markdown("## 🧩 Auto-Fulfillment Chrome Extension Hub")
@@ -1941,7 +1946,7 @@ elif "Download Chrome Extension" in selected_page:
         """)
 
 # ==========================================================
-# 6. REGISTERED CLIENTS OVERVIEW (ADMIN ONLY - WITH EMAIL UPDATE)
+# 6. REGISTERED CLIENTS OVERVIEW (ADMIN ONLY)
 # ==========================================================
 elif (
     selected_page == "👥 Registered Clients Overview"
