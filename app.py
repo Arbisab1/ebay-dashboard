@@ -593,35 +593,6 @@ if "allowed_modules" not in st.session_state:
 
 query_params = st.query_params
 
-# --- DIRECT ORDER SYNC API HANDLER FOR EXTENSION ---
-if "api_order_id" in query_params:
-    target_oid = query_params["api_order_id"]
-    found_order_data = None
-    for s_name, tokens in stores.items():
-        access_token = tokens.get("access_token")
-        if access_token:
-            try:
-                headers = {"Authorization": f"Bearer {access_token}"}
-                r = requests.get(f"https://api.ebay.com/sell/fulfillment/v1/order/{target_oid}", headers=headers)
-                if r.status_code == 200:
-                    o = r.json()
-                    ship_to = o.get("fulfillmentStartInstructions", [{}])[0].get("shippingStep", {}).get("shipTo", {})
-                    contact = ship_to.get("contactAddress", {})
-                    found_order_data = {
-                        "orderId": target_oid,
-                        "buyerName": ship_to.get("fullName", o.get("buyer", {}).get("username", "Buyer")),
-                        "phone": ship_to.get("primaryPhone", {}).get("phoneNumber", "1234567890"),
-                        "street": contact.get("addressLine1", ""),
-                        "city": contact.get("city", ""),
-                        "postalCode": contact.get("postalCode", "")
-                    }
-                    break
-            except Exception:
-                pass
-    
-    st.json(found_order_data if found_order_data else {"error": "Order not found"})
-    st.stop()
-
 if not st.session_state.logged_in and "session_user" in query_params:
     saved_user = query_params["session_user"]
     if saved_user == "admin":
@@ -1268,14 +1239,16 @@ if "Orders &" in selected_page:
                 tracking_num = "Uploaded on eBay"
                 carrier_name = "Courier"
 
-                for inst in o.get("fulfillmentStartInstructions", []):
-                    step = inst.get("shippingStep", {})
-                    track_info = step.get("shipmentTracking", {}).get("trackingNumber")
-                    carrier_info = step.get("shippingCarrierCode")
-                    if track_info:
-                        tracking_num = track_info
-                    if carrier_info:
-                        carrier_name = carrier_info
+                ship_to_obj = o.get("fulfillmentStartInstructions", [{}])[0].get("shippingStep", {}).get("shipTo", {})
+                contact_obj = ship_to_obj.get("contactAddress", {})
+                addr_payload = {
+                    "buyerName": ship_to_obj.get("fullName", buyer),
+                    "phone": ship_to_obj.get("primaryPhone", {}).get("phoneNumber", "1234567890"),
+                    "street": contact_obj.get("addressLine1", ""),
+                    "city": contact_obj.get("city", ""),
+                    "postalCode": contact_obj.get("postalCode", "")
+                }
+                json_snippet = json.dumps(addr_payload)
 
                 try:
                     formatted_preview = templates[chosen_template].format(
@@ -1299,6 +1272,8 @@ if "Orders &" in selected_page:
                         st.write(f"**Item ID:** `{item_id}`")
                         st.write(f"**Carrier:** `{carrier_name}`")
                         st.write(f"**Tracking:** `{tracking_num}`")
+                        st.markdown(f"**📋 Extension Bridge Data:**")
+                        st.code(json_snippet, language="json")
 
                     with c_act:
                         user_msg_input = st.text_area(
@@ -1910,7 +1885,7 @@ elif (
                         st.rerun()
 
 # ==========================================================
-# 5.5 CHROME EXTENSION DOWNLOAD HUB (CLIPBOARD & BRIDGE SYNC)
+# 5.5 CHROME EXTENSION DOWNLOAD HUB (CLIPBOARD BRIDGE)
 # ==========================================================
 elif "Download Chrome Extension" in selected_page:
     st.markdown("## 🧩 Auto-Fulfillment Chrome Extension Hub")
@@ -1926,13 +1901,13 @@ elif "Download Chrome Extension" in selected_page:
         3. Open Google Chrome and go to `chrome://extensions/`.
         4. Turn on **Developer mode** (top right corner).
         5. Click **Load unpacked** (top left) and select the extracted extension folder.
-        6. In your portal orders view, click **"📋 Copy Address"** or use the extension popup to auto-fill supplier checkout fields instantly without connection errors!
+        6. In your portal orders view, copy the order snippet and click **Paste & Auto-Fill** in the extension popup for instant checkout!
         """)
         
         ext_manifest = json.dumps({
             "manifest_version": 3,
             "name": "eBay Clipboard Fulfillment Bridge",
-            "version": "3.0",
+            "version": "3.1",
             "description": "Fulfill supplier orders seamlessly via secure clipboard bridge.",
             "permissions": ["storage", "activeTab", "scripting", "clipboardRead"],
             "host_permissions": ["https://*.aliexpress.com/*", "https://*.cjdropshipping.com/*", "https://*.amazon.com/*"],
@@ -2008,7 +1983,6 @@ elif "Download Chrome Extension" in selected_page:
             try {
               orderData = JSON.parse(rawText);
             } catch(e) {
-              // Fallback if raw text format
               orderData = { buyerName: rawText, phone: "1234567890", street: rawText, city: "City", postalCode: "00000" };
             }
             
