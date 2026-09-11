@@ -48,7 +48,6 @@ AUTH_URL = (
     "scope=https%3A%2F%2Fapi.ebay.com%2Foauth%2Fapi_scope%20"
     "https%3A%2F%2Fapi.ebay.com%2Foauth%2Fapi_scope%2Fsell.fulfillment%20"
     "https%3A%2F%2Fapi.ebay.com%2Foauth%2Fapi_scope%2Fsell.finances%20"
-    "https%3A%2F%2Fapi.ebay.com%2Foauth%2Fapi_scope%2Fcommerce.message%20"
     "https%3A%2F%2Fapi.ebay.com%2Foauth%2Fapi_scope%2Fbuy.browse%20"
     "https%3A%2F%2Fapi.ebay.com%2Foauth%2Fapi_scope%2Fsell.compliance"
 )
