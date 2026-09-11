@@ -592,6 +592,36 @@ if "allowed_modules" not in st.session_state:
     st.session_state.allowed_modules = ALL_MODULES
 
 query_params = st.query_params
+
+# --- DIRECT ORDER SYNC API HANDLER FOR EXTENSION ---
+if "api_order_id" in query_params:
+    target_oid = query_params["api_order_id"]
+    found_order_data = None
+    for s_name, tokens in stores.items():
+        access_token = tokens.get("access_token")
+        if access_token:
+            try:
+                headers = {"Authorization": f"Bearer {access_token}"}
+                r = requests.get(f"https://api.ebay.com/sell/fulfillment/v1/order/{target_oid}", headers=headers)
+                if r.status_code == 200:
+                    o = r.json()
+                    ship_to = o.get("fulfillmentStartInstructions", [{}])[0].get("shippingStep", {}).get("shipTo", {})
+                    contact = ship_to.get("contactAddress", {})
+                    found_order_data = {
+                        "orderId": target_oid,
+                        "buyerName": ship_to.get("fullName", o.get("buyer", {}).get("username", "Buyer")),
+                        "phone": ship_to.get("primaryPhone", {}).get("phoneNumber", "1234567890"),
+                        "street": contact.get("addressLine1", ""),
+                        "city": contact.get("city", ""),
+                        "postalCode": contact.get("postalCode", "")
+                    }
+                    break
+            except Exception:
+                pass
+    
+    st.json(found_order_data if found_order_data else {"error": "Order not found"})
+    st.stop()
+
 if not st.session_state.logged_in and "session_user" in query_params:
     saved_user = query_params["session_user"]
     if saved_user == "admin":
@@ -1880,11 +1910,11 @@ elif (
                         st.rerun()
 
 # ==========================================================
-# 5.5 CHROME EXTENSION DOWNLOAD HUB
+# 5.5 CHROME EXTENSION DOWNLOAD HUB (ORDER ID DIRECT SYNC)
 # ==========================================================
 elif "Download Chrome Extension" in selected_page:
     st.markdown("## 🧩 Auto-Fulfillment Chrome Extension Hub")
-    st.caption("Download and install our official browser extension for 1-click supplier checkout auto-filling.")
+    st.caption("Download and install our official browser extension for 1-click eBay Order ID synchronization & auto-filling.")
 
     col_ex1, col_ex2 = st.columns([1.5, 1])
 
@@ -1896,16 +1926,18 @@ elif "Download Chrome Extension" in selected_page:
         3. Open Google Chrome and go to `chrome://extensions/`.
         4. Turn on **Developer mode** (top right corner).
         5. Click **Load unpacked** (top left) and select the extracted extension folder.
-        6. Open any supplier checkout page (AliExpress, CJ Dropshipping, etc.) and click the extension icon to auto-fill customer details in 1 click!
+        6. On any supplier checkout page (AliExpress, CJ Dropshipping, etc.), click the extension icon, enter your **eBay Order ID**, and click **Sync & Auto-Fill**!
         """)
         
+        current_portal_url = st.get_option("server.baseUrlPath") or "https://your-app-url.streamlit.app"
+
         ext_manifest = json.dumps({
             "manifest_version": 3,
-            "name": "eBay Auto-Fulfillment Assistant",
-            "version": "1.2",
-            "description": "Auto-fill buyer shipping details on supplier checkout pages.",
+            "name": "eBay Direct Order Autofill",
+            "version": "2.0",
+            "description": "Fetch buyer address via eBay Order ID and auto-fill checkout pages.",
             "permissions": ["storage", "activeTab", "scripting", "tabs"],
-            "host_permissions": ["https://*.aliexpress.com/*", "https://*.cjdropshipping.com/*", "https://*.amazon.com/*"],
+            "host_permissions": ["https://*.aliexpress.com/*", "https://*.cjdropshipping.com/*", "https://*.amazon.com/*", "https://*.streamlit.app/*"],
             "action": {"default_popup": "popup.html"},
             "content_scripts": [{
                 "matches": ["https://*.aliexpress.com/*", "https://*.cjdropshipping.com/*", "https://*.amazon.com/*"],
@@ -1942,32 +1974,51 @@ elif "Download Chrome Extension" in selected_page:
         });
         """
 
-        ext_popup_html = """
+        ext_popup_html = f"""
         <!DOCTYPE html>
         <html>
         <head><meta charset="utf-8">
         <style>
-          body { width: 280px; font-family: sans-serif; padding: 12px; background: #F8FAFC; color: #0F172A; margin: 0; }
-          h3 { margin-top: 0; font-size: 14px; color: #2563EB; }
-          .card { background: #FFFFFF; border: 1px solid #CBD5E1; padding: 10px; border-radius: 8px; font-size: 12px; margin-bottom: 10px; }
-          button { width: 100%; background: #2563EB; color: white; border: none; padding: 8px; border-radius: 6px; font-weight: bold; cursor: pointer; }
-          button:hover { background: #1D4ED8; }
-          p { margin: 4px 0; }
+          body {{ width: 280px; font-family: sans-serif; padding: 12px; background: #F8FAFC; color: #0F172A; margin: 0; }}
+          h3 {{ margin-top: 0; font-size: 14px; color: #2563EB; }}
+          .card {{ background: #FFFFFF; border: 1px solid #CBD5E1; padding: 10px; border-radius: 8px; font-size: 12px; margin-bottom: 10px; }}
+          input {{ width: 100%; padding: 6px; box-sizing: border-box; margin-top: 4px; border: 1px solid #CBD5E1; border-radius: 4px; }}
+          button {{ width: 100%; background: #2563EB; color: white; border: none; padding: 9px; border-radius: 6px; font-weight: bold; cursor: pointer; margin-top: 8px; }}
+          button:hover {{ background: #1D4ED8; }}
+          p {{ margin: 4px 0; }}
+          #lblStatus {{ font-weight: 600; color: #16A34A; }}
         </style>
         </head>
         <body>
-          <h3>📦 eBay Auto-Fulfillment</h3>
+          <h3>📦 eBay Order Sync</h3>
           <div class="card">
-            <p><b>Status:</b> <span id="lblStatus" style="color: #16A34A; font-weight: 600;">Active & Ready</span></p>
+            <p>Enter eBay Order ID:</p>
+            <input type="text" id="orderIdInput" placeholder="e.g. 12-09876-54321">
           </div>
-          <button id="btnFill">⚡ Auto-Fill Address</button>
+          <button id="btnSyncFill">🔄 Sync & Auto-Fill</button>
+          <p style="margin-top: 8px; font-size: 11px;">Status: <span id="lblStatus">Ready</span></p>
           <script>
-            document.getElementById('btnFill').addEventListener('click', async () => {
-              const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-              const sampleOrder = { buyerName: "John Doe", phone: "+15550199", street: "123 Main Street", city: "New York", postalCode: "10001" };
-              chrome.tabs.sendMessage(tab.id, { action: "autofill_order", orderData: sampleOrder }, (res) => {
-                document.getElementById('lblStatus').innerText = (res && res.status === "success") ? "Filled Successfully!" : "Open Checkout Fields First!";
-              });
+            const portalBase = window.location.origin;
+            document.getElementById('btnSyncFill').addEventListener('click', async () => {
+              const oid = document.getElementById('orderIdInput').value.trim();
+              if(!oid) {{ alert("Please enter a valid Order ID"); return; }}
+              document.getElementById('lblStatus').innerText = "Fetching from eBay API...";
+              
+              try {{
+                const res = await fetch(`${{portalBase}}/?api_order_id=${{oid}}`);
+                const orderData = await res.json();
+                if(orderData.error) {{
+                  document.getElementById('lblStatus').innerText = "Error: Order not found";
+                  return;
+                }}
+                
+                const [tab] = await chrome.tabs.query({{ active: true, currentWindow: true }});
+                chrome.tabs.sendMessage(tab.id, {{ action: "autofill_order", orderData: orderData }}, (resp) => {
+                  document.getElementById('lblStatus').innerText = (resp && resp.status === "success") ? "Filled Successfully!" : "Open Checkout Page!";
+                });
+              } catch(e) {{
+                document.getElementById('lblStatus').innerText = "Connection Failed";
+              }}
             });
           </script>
         </body>
@@ -1994,8 +2045,8 @@ elif "Download Chrome Extension" in selected_page:
     with col_ex2:
         st.markdown("""
         ### 🔒 Secure & Verified
-        * **Zero Data Retention:** Data is sent securely via authorized encrypted tokens.
-        * **Direct Sync:** Matches orders automatically.
+        * **Direct Live Sync:** Connects directly via your portal's active eBay token.
+        * **Instant Lookup:** Pulls buyer name, street, city, and zip using only the Order ID.
         * **Compatible With:** Google Chrome, Microsoft Edge, and Brave browsers.
         """)
 
