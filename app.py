@@ -579,7 +579,7 @@ users_db = load_json(USERS_FILE, {})
 templates = load_json(TEMPLATES_FILE, DEFAULT_TEMPLATES)
 logs = load_json(LOGS_FILE, {})
 
-# --- PERSISTENT SESSION STATE INITIALIZATION ---
+# --- ROBUST PERSISTENT SESSION STATE & URL SYNC ---
 if "logged_in" not in st.session_state:
     st.session_state.logged_in = False
 if "username" not in st.session_state:
@@ -590,6 +590,23 @@ if "assigned_stores" not in st.session_state:
     st.session_state.assigned_stores = []
 if "allowed_modules" not in st.session_state:
     st.session_state.allowed_modules = ALL_MODULES
+
+# Check URL query params for persistent session token across reloads
+query_params = st.query_params
+if not st.session_state.logged_in and "session_user" in query_params:
+    saved_user = query_params["session_user"]
+    if saved_user == "admin":
+        st.session_state.logged_in = True
+        st.session_state.username = "admin"
+        st.session_state.role = "admin"
+        st.session_state.assigned_stores = ["ALL"]
+        st.session_state.allowed_modules = ALL_MODULES
+    elif saved_user in users_db:
+        st.session_state.logged_in = True
+        st.session_state.username = saved_user
+        st.session_state.role = users_db[saved_user].get("role", "client")
+        st.session_state.assigned_stores = users_db[saved_user].get("assigned_stores", [])
+        st.session_state.allowed_modules = users_db[saved_user].get("allowed_modules", ALL_MODULES)
 
 if "auth_mode" not in st.session_state:
     st.session_state.auth_mode = "signin"
@@ -643,6 +660,7 @@ if not st.session_state.logged_in:
                         st.session_state.role = "admin"
                         st.session_state.assigned_stores = ["ALL"]
                         st.session_state.allowed_modules = ALL_MODULES
+                        st.query_params["session_user"] = "admin"
                         st.success("Admin Login Successful!")
                         st.rerun()
 
@@ -655,6 +673,7 @@ if not st.session_state.logged_in:
                         st.session_state.role = users_db[uname].get("role", "client")
                         st.session_state.assigned_stores = users_db[uname].get("assigned_stores", [])
                         st.session_state.allowed_modules = users_db[uname].get("allowed_modules", ALL_MODULES)
+                        st.query_params["session_user"] = uname
                         st.success(f"Welcome, {uname}!")
                         st.rerun()
                     else:
@@ -734,6 +753,7 @@ if not st.session_state.logged_in:
                             st.session_state.allowed_modules = temp_info.get("allowed_modules", ALL_MODULES)
                             st.session_state.otp_code = None
                             st.session_state.signup_temp_data = None
+                            st.query_params["session_user"] = temp_info["username"]
                             st.success("Account created and verified!")
                             time.sleep(1)
                             st.rerun()
@@ -896,6 +916,8 @@ with st.sidebar:
         st.session_state.role = None
         st.session_state.assigned_stores = []
         st.session_state.allowed_modules = ALL_MODULES
+        if "session_user" in st.query_params:
+            del st.query_params["session_user"]
         st.rerun()
 
     st.divider()
