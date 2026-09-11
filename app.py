@@ -68,5 +68,6 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-whatsapp_html_snippet = f"""
-[
+whatsapp_html_snippet = (
+    '['
+    '
