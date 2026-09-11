@@ -71,8 +71,6 @@ st.markdown(
 whatsapp_html_snippet = (
     '['
     '
-
-
 '
 'Need Help? Chat with us'
 ']('
