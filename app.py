@@ -478,12 +478,10 @@ def audit_competitor_listing(title, price, seller_feedback_pct, image_url):
     violations = []
     title_lower = title.lower()
 
-    # Rule 1: Title Keyword Stuffing & Search Manipulation
     spam_detected = [term for term in SPAM_TERMS if term in title_lower]
     if spam_detected:
-        violations.append(f"Keyword Spam: Contains banned non-descriptive terms ({', '.join(spam_detected)})")
+        violations.append(f"Keyword Spam: Banned terms ({', '.join(spam_detected)})")
 
-    # Rule 2: Title Character Length & Formatting
     if len(title) > 80:
         violations.append(f"Title Length Exceeded: {len(title)}/80 characters")
     
@@ -491,9 +489,8 @@ def audit_competitor_listing(title, price, seller_feedback_pct, image_url):
     if len(words) > 4:
         caps_words = [w for w in words if w.isupper() and len(w) > 2]
         if len(caps_words) >= 4:
-            violations.append("Excessive Capitalization in Title (Spam Policy)")
+            violations.append("Excessive Capitalization in Title")
 
-    # Rule 3: Suspicious Low Feedback Seller
     try:
         fb_float = float(str(seller_feedback_pct).replace("%", "").strip())
         if fb_float < 95.0 and fb_float > 0.0:
@@ -501,13 +498,11 @@ def audit_competitor_listing(title, price, seller_feedback_pct, image_url):
     except Exception:
         pass
 
-    # Rule 4: Suspicious Price Manipulation
     if price < 0.99:
-        violations.append("Extreme Low Price: Possible Choice Manipulation / Fee Avoidance")
+        violations.append("Extreme Low Price: Possible Choice Manipulation")
 
-    # Rule 5: Non-Secure Image Policy
     if image_url and str(image_url).startswith("http://"):
-        violations.append("Non-Compliant HTTP Image (eBay HTTPS Policy Violation)")
+        violations.append("Non-Compliant HTTP Image (HTTPS Policy Violation)")
 
     if not violations:
         return "🟢 Clean Compliant", "No violations detected.", "LOW"
@@ -663,7 +658,7 @@ if not st.session_state.logged_in:
     st.stop()
 
 # ==========================================================
-# 2. LOGGED IN DASHBOARD
+# 2. LOGGED IN DASHBOARD (NEW EXACT ORDERED SEQUENCE)
 # ==========================================================
 if st.session_state.role == "admin":
     accessible_stores = stores
@@ -674,7 +669,7 @@ else:
         if k in st.session_state.assigned_stores
     }
 
-# --- SIDEBAR ---
+# --- SIDEBAR (ORDERED EXACTLY AS REQUESTED) ---
 with st.sidebar:
     st.markdown(
         """
@@ -732,24 +727,25 @@ with st.sidebar:
 
     st.divider()
 
+    # 1. Orders -> 2. Product Hunting -> 3. Listing Violations -> 4. Sales Reports -> 5. Link Stores -> 6. Registered Clients -> 7. Global Templates
     if st.session_state.role == "admin":
         nav_options = [
             "All Stores Orders & Messaging",
-            "📈 Sales & Revenue Reports",
             "🔍 Product Hunting & Research",
             "⚠️ Listing Violations & Policy",
-            "Link & Manage eBay Stores",
-            "Registered Clients Overview",
-            "Global Message Templates",
+            "📈 Sales & Revenue Reports",
+            "➕ Link & Manage eBay Stores",
+            "👥 Registered Clients Overview",
+            "📝 Global Message Templates",
         ]
     else:
         nav_options = [
             "My Orders & Auto-Messaging",
-            "📈 Sales & Revenue Reports",
             "🔍 Product Hunting & Research",
             "⚠️ Listing Violations & Policy",
+            "📈 Sales & Revenue Reports",
             "➕ Connect My eBay Store",
-            "My Message Templates",
+            "📝 My Message Templates",
         ]
 
     selected_page = st.radio("Menu", nav_options, label_visibility="collapsed")
@@ -775,7 +771,7 @@ with st.sidebar:
     st.caption("🔒 Verified eBay REST API Partner")
 
 # ==========================================================
-# PAGE A: ORDERS & AUTO-MESSAGING HUB
+# 1. ORDERS & AUTO-MESSAGING HUB
 # ==========================================================
 if "Orders &" in selected_page:
     st.markdown(
@@ -1070,7 +1066,309 @@ if "Orders &" in selected_page:
              st.info("No orders found for the selected store and date range.")
 
 # ==========================================================
-# PAGE B: SALES & REVENUE REPORTS
+# 2. PRODUCT HUNTING & RESEARCH (WITH COMPETITOR AUDIT)
+# ==========================================================
+elif selected_page == "🔍 Product Hunting & Research":
+    st.markdown(
+        """
+    <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 8px;">
+        <img src="https://upload.wikimedia.org/wikipedia/commons/1/1b/EBay_logo.svg" width="75">
+        <h2 style="margin: 0; color: #0F172A; font-weight: 700;">Product Hunting & Competitor Policy Audit</h2>
+    </div>
+    """,
+        unsafe_allow_html=True,
+    )
+    st.caption("Scan marketplace competitors, evaluate price benchmarks, and audit competitor listing policy violations.")
+
+    with st.container():
+        st.markdown("#### 🔎 Research Product Niche / Keyword")
+        r_col1, r_col2, r_col3, r_col4 = st.columns([3, 1.5, 1.5, 1.2])
+
+        with r_col1:
+            search_query = st.text_input("Enter Product Title or Keyword:", placeholder="e.g. Wireless Earbuds, iPhone 14 Case", key="hunt_search_input")
+        with r_col2:
+            market_choice = st.selectbox("Target Market:", ["eBay US (EBAY_US)", "eBay UK (EBAY_GB)", "eBay Germany (EBAY_DE)", "eBay Australia (EBAY_AU)"], key="hunt_market_select")
+            market_id = market_choice.split("(")[1].replace(")", "").strip()
+        with r_col3:
+            cond_choice = st.selectbox("Item Condition:", ["ALL", "New", "Used"], key="hunt_cond_select")
+        with r_col4:
+            sort_choice = st.selectbox("Sort Order:", ["Newly Listed", "Price: Low to High", "Price: High to Low"], key="hunt_sort_select")
+            sort_map = {"Newly Listed": "newlyListed", "Price: Low to High": "price_asc", "Price: High to Low": "price_desc"}
+            active_sort = sort_map[sort_choice]
+
+        c_hunt_btn, _ = st.columns([1.5, 4])
+        with c_hunt_btn:
+            hunt_submit = st.button("🚀 Analyze & Audit Competitors", type="primary", use_container_width=True, key="hunt_submit_btn")
+
+    if hunt_submit and search_query:
+        with st.spinner(f"Scanning eBay marketplace & auditing policy compliance for '{search_query}'..."):
+            results, err = search_ebay_market(
+                keyword=search_query,
+                marketplace_id=market_id,
+                limit=50,
+                sort_order=active_sort,
+                condition_filter=cond_choice
+            )
+
+        if err:
+            st.error(f"Failed to fetch market data: {err}")
+        elif results and "itemSummaries" in results:
+            items = results.get("itemSummaries", [])
+            total_found = results.get("total", len(items))
+
+            prices = []
+            hunting_data = []
+
+            high_risk_competitors = 0
+            warning_competitors = 0
+            clean_competitors = 0
+
+            for it in items:
+                title = it.get("title", "N/A")
+                price_obj = it.get("price", {})
+                item_price = float(price_obj.get("value", 0.0))
+                currency = price_obj.get("currency", "USD")
+                prices.append(item_price)
+
+                shipping_cost = 0.0
+                for ship in it.get("shippingOptions", []):
+                    cost_val = ship.get("shippingCost", {}).get("value")
+                    if cost_val:
+                        shipping_cost = float(cost_val)
+                        break
+
+                condition = it.get("condition", "N/A")
+                seller = it.get("seller", {}).get("username", "N/A")
+                feedback = it.get("seller", {}).get("feedbackPercentage", "N/A")
+                item_url = it.get("itemWebUrl", "#")
+                image_url = it.get("image", {}).get("imageUrl", "")
+
+                v_badge, v_reason, v_level = audit_competitor_listing(
+                    title=title,
+                    price=item_price,
+                    seller_feedback_pct=feedback,
+                    image_url=image_url
+                )
+
+                if v_level == "HIGH":
+                    high_risk_competitors += 1
+                elif v_level == "MEDIUM":
+                    warning_competitors += 1
+                else:
+                    clean_competitors += 1
+
+                hunting_data.append({
+                    "Product Title": title,
+                    "Violation Status": v_badge,
+                    "Violation / Flag Reason": v_reason,
+                    "Price": item_price,
+                    "Shipping": shipping_cost,
+                    "Total Price": round(item_price + shipping_cost, 2),
+                    "Currency": currency,
+                    "Condition": condition,
+                    "Seller": seller,
+                    "Feedback %": f"{feedback}%",
+                    "Item Link": item_url,
+                    "RiskLevel": v_level
+                })
+
+            df_hunt_raw = pd.DataFrame(hunting_data)
+
+            avg_price = (sum(prices) / len(prices)) if prices else 0.0
+            primary_curr = df_hunt_raw["Currency"].iloc[0] if not df_hunt_raw.empty else "USD"
+
+            st.divider()
+            st.markdown(f"### 📊 Market & Compliance Summary for `{search_query}`")
+
+            hk1, hk2, hk3, hk4 = st.columns(4)
+            hk1.metric("Average Market Price", f"{primary_curr} {avg_price:,.2f}")
+            hk2.metric("🟢 Clean Compliant Competitors", clean_competitors)
+            hk3.metric("🔴 High-Risk Flagged Listings", high_risk_competitors)
+            hk4.metric("🟡 Policy Warnings", warning_competitors)
+
+            st.divider()
+
+            f_col1, f_col2 = st.columns([2, 1.2])
+            with f_col1:
+                violation_filter = st.selectbox(
+                    "Filter Competitor Listings by Compliance:",
+                    ["All Analyzed Listings", "🔴 High Risk Violations Only", "🟡 Warnings Only", "🟢 Clean Compliant Only"],
+                    key="comp_violation_filter"
+                )
+
+            filtered_hunt = df_hunt_raw
+            if violation_filter == "🔴 High Risk Violations Only":
+                filtered_hunt = df_hunt_raw[df_hunt_raw["RiskLevel"] == "HIGH"]
+            elif violation_filter == "🟡 Warnings Only":
+                filtered_hunt = df_hunt_raw[df_hunt_raw["RiskLevel"] == "MEDIUM"]
+            elif violation_filter == "🟢 Clean Compliant Only":
+                filtered_hunt = df_hunt_raw[df_hunt_raw["RiskLevel"] == "LOW"]
+
+            df_hunt_export = filtered_hunt.drop(columns=["RiskLevel"], errors="ignore")
+
+            with f_col2:
+                st.write("")
+                hunt_csv = io.StringIO()
+                df_hunt_export.to_csv(hunt_csv, index=False)
+                st.download_button(
+                    label="📥 Export Hunting Audit (CSV)",
+                    data=hunt_csv.getvalue(),
+                    file_name=f"eBay_Hunting_Audit_{search_query.replace(' ', '_')}_{datetime.now().strftime('%Y%m%d')}.csv",
+                    mime="text/csv",
+                    use_container_width=True,
+                    type="primary"
+                )
+
+            st.dataframe(
+                df_hunt_export,
+                column_config={
+                    "Item Link": st.column_config.LinkColumn("View on eBay")
+                },
+                use_container_width=True,
+                hide_index=True,
+            )
+        else:
+            st.warning("No listings found matching your search keyword and filters.")
+
+# ==========================================================
+# 3. LISTING VIOLATIONS & POLICY HEALTH (YOUR ACCOUNT)
+# ==========================================================
+elif selected_page == "⚠️ Listing Violations & Policy":
+    st.markdown(
+        """
+    <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 8px;">
+        <img src="https://upload.wikimedia.org/wikipedia/commons/1/1b/EBay_logo.svg" width="75">
+        <h2 style="margin: 0; color: #0F172A; font-weight: 700;">Listing Violations & Policy Health</h2>
+    </div>
+    """,
+        unsafe_allow_html=True,
+    )
+    st.caption("Live inspection of policy violations, VeRO/Copyright alerts, out-of-stock compliance, and listing warnings.")
+
+    if not accessible_stores:
+        st.info("👋 Welcome! Your store is not connected yet.")
+    else:
+        active_violation_store = st.selectbox(
+            "Select Store Channel to Audit:", list(accessible_stores.keys()), key="store_violation_select"
+        )
+        tokens = accessible_stores[active_violation_store]
+
+        c_v1, c_v2 = st.columns([3, 1.2])
+        with c_v1:
+            market_violation_choice = st.selectbox(
+                "Target Marketplace:",
+                ["eBay US (EBAY_US)", "eBay UK (EBAY_GB)", "eBay Germany (EBAY_DE)", "eBay Australia (EBAY_AU)"],
+                key="market_violation_select"
+            )
+            v_market_id = market_violation_choice.split("(")[1].replace(")", "").strip()
+        with c_v2:
+            st.write("")
+            scan_violations_btn = st.button("🔍 Scan Store Policy Health", type="primary", use_container_width=True, key="scan_v_btn")
+
+        violations_cache_key = f"violations_{active_violation_store}_{v_market_id}"
+
+        if scan_violations_btn or violations_cache_key not in st.session_state:
+            with st.spinner("Auditing eBay listings for policy compliance and violations..."):
+                access_token = tokens["access_token"]
+                test_headers = {"Authorization": f"Bearer {access_token}"}
+                test_res = requests.get("https://api.ebay.com/sell/compliance/v1/listing_violation?compliance_type=OUT_OF_STOCK&limit=1", headers=test_headers)
+                
+                if test_res.status_code != 200 and tokens.get("refresh_token"):
+                    new_t = get_fresh_token(tokens["refresh_token"])
+                    if new_t:
+                        stores[active_violation_store]["access_token"] = new_t
+                        save_json(STORES_FILE, stores)
+                        access_token = new_t
+
+                fetched_violations = fetch_ebay_compliance_violations(access_token, v_market_id)
+                st.session_state[violations_cache_key] = fetched_violations
+
+        raw_violations = st.session_state.get(violations_cache_key, [])
+
+        parsed_violations = []
+        critical_count = 0
+        warning_count = 0
+
+        for v in raw_violations:
+            listing_id = v.get("listingId", "N/A")
+            c_type = v.get("compliance_type", "GENERAL").replace("_", " ").title()
+            
+            for detail in v.get("violations", []):
+                reason = detail.get("reason", "Policy Non-Compliance")
+                message = detail.get("message", "Review listing according to eBay guidelines.")
+                severity = str(detail.get("severity", "WARNING")).upper()
+                
+                if severity == "BLOCK" or severity == "ERROR":
+                    critical_count += 1
+                    badge = "🔴 Critical / Blocked"
+                else:
+                    warning_count += 1
+                    badge = "🟡 Warning"
+
+                action = ""
+                for act in detail.get("correctiveActions", []):
+                    action += act.get("description", "") + " "
+
+                parsed_violations.append({
+                    "Listing ID": listing_id,
+                    "Policy Type": c_type,
+                    "Severity": badge,
+                    "Reason": reason,
+                    "Details": message,
+                    "Corrective Action": action.strip() if action else "Update listing details in Seller Hub",
+                    "Item Link": f"https://www.ebay.com/itm/{listing_id}" if listing_id != "N/A" else "#",
+                    "RawSeverity": severity
+                })
+
+        st.divider()
+
+        vk1, vk2, vk3 = st.columns(3)
+        vk1.metric("Total Flagged Listings", len(set([x['Listing ID'] for x in parsed_violations])))
+        vk2.metric("Critical Action Items (Block)", critical_count)
+        vk3.metric("Policy Warnings", warning_count)
+
+        st.divider()
+
+        if parsed_violations:
+            sev_choice = st.radio("Filter Violations by Severity:", ["All Issues", "Critical Only", "Warnings Only"], horizontal=True)
+            
+            if sev_choice == "Critical Only":
+                df_v_display = [x for x in parsed_violations if "Critical" in x["Severity"]]
+            elif sev_choice == "Warnings Only":
+                df_v_display = [x for x in parsed_violations if "Warning" in x["Severity"]]
+            else:
+                df_v_display = parsed_violations
+
+            df_v = pd.DataFrame(df_v_display).drop(columns=["RawSeverity"], errors="ignore")
+
+            vc_title, vc_dl = st.columns([3, 1])
+            with vc_title:
+                st.markdown(f"#### 📋 Active Violations Report ({len(df_v_display)} issues found)")
+            with vc_dl:
+                csv_v_buffer = io.StringIO()
+                df_v.to_csv(csv_v_buffer, index=False)
+                st.download_button(
+                    label="📥 Export Violations CSV",
+                    data=csv_v_buffer.getvalue(),
+                    file_name=f"eBay_Violations_{active_violation_store}_{datetime.now().strftime('%Y%m%d')}.csv",
+                    mime="text/csv",
+                    use_container_width=True,
+                    type="primary"
+                )
+
+            st.dataframe(
+                df_v,
+                column_config={
+                    "Item Link": st.column_config.LinkColumn("Open Listing")
+                },
+                use_container_width=True,
+                hide_index=True
+            )
+        else:
+            st.success("🎉 Great news! No policy violations or compliance warnings found for this store.")
+
+# ==========================================================
+# 4. SALES & REVENUE REPORTS
 # ==========================================================
 elif selected_page == "📈 Sales & Revenue Reports":
     st.markdown(
@@ -1254,312 +1552,7 @@ elif selected_page == "📈 Sales & Revenue Reports":
             st.info("No sales records found for this period. Click '🔄 Sync Sales Data' to fetch.")
 
 # ==========================================================
-# PAGE C: PRODUCT HUNTING & RESEARCH (WITH COMPETITOR VIOLATIONS AUDIT)
-# ==========================================================
-elif selected_page == "🔍 Product Hunting & Research":
-    st.markdown(
-        """
-    <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 8px;">
-        <img src="https://upload.wikimedia.org/wikipedia/commons/1/1b/EBay_logo.svg" width="75">
-        <h2 style="margin: 0; color: #0F172A; font-weight: 700;">Product Hunting & Competitor Policy Audit</h2>
-    </div>
-    """,
-        unsafe_allow_html=True,
-    )
-    st.caption("Scan marketplace competitors, evaluate price benchmarks, and audit competitor listing policy violations.")
-
-    with st.container():
-        st.markdown("#### 🔎 Research Product Niche / Keyword")
-        r_col1, r_col2, r_col3, r_col4 = st.columns([3, 1.5, 1.5, 1.2])
-
-        with r_col1:
-            search_query = st.text_input("Enter Product Title or Keyword:", placeholder="e.g. Wireless Earbuds, iPhone 14 Case", key="hunt_search_input")
-        with r_col2:
-            market_choice = st.selectbox("Target Market:", ["eBay US (EBAY_US)", "eBay UK (EBAY_GB)", "eBay Germany (EBAY_DE)", "eBay Australia (EBAY_AU)"], key="hunt_market_select")
-            market_id = market_choice.split("(")[1].replace(")", "").strip()
-        with r_col3:
-            cond_choice = st.selectbox("Item Condition:", ["ALL", "New", "Used"], key="hunt_cond_select")
-        with r_col4:
-            sort_choice = st.selectbox("Sort Order:", ["Newly Listed", "Price: Low to High", "Price: High to Low"], key="hunt_sort_select")
-            sort_map = {"Newly Listed": "newlyListed", "Price: Low to High": "price_asc", "Price: High to Low": "price_desc"}
-            active_sort = sort_map[sort_choice]
-
-        c_hunt_btn, _ = st.columns([1.5, 4])
-        with c_hunt_btn:
-            hunt_submit = st.button("🚀 Analyze & Audit Competitors", type="primary", use_container_width=True, key="hunt_submit_btn")
-
-    if hunt_submit and search_query:
-        with st.spinner(f"Scanning eBay marketplace & auditing policy compliance for '{search_query}'..."):
-            results, err = search_ebay_market(
-                keyword=search_query,
-                marketplace_id=market_id,
-                limit=50,
-                sort_order=active_sort,
-                condition_filter=cond_choice
-            )
-
-        if err:
-            st.error(f"Failed to fetch market data: {err}")
-        elif results and "itemSummaries" in results:
-            items = results.get("itemSummaries", [])
-            total_found = results.get("total", len(items))
-
-            prices = []
-            hunting_data = []
-
-            high_risk_competitors = 0
-            warning_competitors = 0
-            clean_competitors = 0
-
-            for it in items:
-                title = it.get("title", "N/A")
-                price_obj = it.get("price", {})
-                item_price = float(price_obj.get("value", 0.0))
-                currency = price_obj.get("currency", "USD")
-                prices.append(item_price)
-
-                shipping_cost = 0.0
-                for ship in it.get("shippingOptions", []):
-                    cost_val = ship.get("shippingCost", {}).get("value")
-                    if cost_val:
-                        shipping_cost = float(cost_val)
-                        break
-
-                condition = it.get("condition", "N/A")
-                seller = it.get("seller", {}).get("username", "N/A")
-                feedback = it.get("seller", {}).get("feedbackPercentage", "N/A")
-                item_url = it.get("itemWebUrl", "#")
-                image_url = it.get("image", {}).get("imageUrl", "")
-
-                # Audit Competitor Listing for policy violations
-                v_badge, v_reason, v_level = audit_competitor_listing(
-                    title=title,
-                    price=item_price,
-                    seller_feedback_pct=feedback,
-                    image_url=image_url
-                )
-
-                if v_level == "HIGH":
-                    high_risk_competitors += 1
-                elif v_level == "MEDIUM":
-                    warning_competitors += 1
-                else:
-                    clean_competitors += 1
-
-                hunting_data.append({
-                    "Product Title": title,
-                    "Violation Status": v_badge,
-                    "Violation / Flag Reason": v_reason,
-                    "Price": item_price,
-                    "Shipping": shipping_cost,
-                    "Total Price": round(item_price + shipping_cost, 2),
-                    "Currency": currency,
-                    "Condition": condition,
-                    "Seller": seller,
-                    "Feedback %": f"{feedback}%",
-                    "Item Link": item_url,
-                    "RiskLevel": v_level
-                })
-
-            df_hunt_raw = pd.DataFrame(hunting_data)
-
-            avg_price = (sum(prices) / len(prices)) if prices else 0.0
-            primary_curr = df_hunt_raw["Currency"].iloc[0] if not df_hunt_raw.empty else "USD"
-
-            st.divider()
-            st.markdown(f"### 📊 Market & Compliance Summary for `{search_query}`")
-
-            # KPI METRICS
-            hk1, hk2, hk3, hk4 = st.columns(4)
-            hk1.metric("Average Market Price", f"{primary_curr} {avg_price:,.2f}")
-            hk2.metric("🟢 Clean Compliant Competitors", clean_competitors)
-            hk3.metric("🔴 High-Risk Flagged Listings", high_risk_competitors)
-            hk4.metric("🟡 Policy Warnings", warning_competitors)
-
-            st.divider()
-
-            # Filter options for competitor listings
-            f_col1, f_col2 = st.columns([2, 1.2])
-            with f_col1:
-                violation_filter = st.selectbox(
-                    "Filter Competitor Listings by Compliance:",
-                    ["All Analyzed Listings", "🔴 High Risk Violations Only", "🟡 Warnings Only", "🟢 Clean Compliant Only"],
-                    key="comp_violation_filter"
-                )
-
-            filtered_hunt = df_hunt_raw
-            if violation_filter == "🔴 High Risk Violations Only":
-                filtered_hunt = df_hunt_raw[df_hunt_raw["RiskLevel"] == "HIGH"]
-            elif violation_filter == "🟡 Warnings Only":
-                filtered_hunt = df_hunt_raw[df_hunt_raw["RiskLevel"] == "MEDIUM"]
-            elif violation_filter == "🟢 Clean Compliant Only":
-                filtered_hunt = df_hunt_raw[df_hunt_raw["RiskLevel"] == "LOW"]
-
-            df_hunt_export = filtered_hunt.drop(columns=["RiskLevel"], errors="ignore")
-
-            with f_col2:
-                st.write("")
-                hunt_csv = io.StringIO()
-                df_hunt_export.to_csv(hunt_csv, index=False)
-                st.download_button(
-                    label="📥 Export Hunting Audit (CSV)",
-                    data=hunt_csv.getvalue(),
-                    file_name=f"eBay_Hunting_Audit_{search_query.replace(' ', '_')}_{datetime.now().strftime('%Y%m%d')}.csv",
-                    mime="text/csv",
-                    use_container_width=True,
-                    type="primary"
-                )
-
-            st.dataframe(
-                df_hunt_export,
-                column_config={
-                    "Item Link": st.column_config.LinkColumn("View on eBay")
-                },
-                use_container_width=True,
-                hide_index=True,
-            )
-        else:
-            st.warning("No listings found matching your search keyword and filters.")
-
-# ==========================================================
-# PAGE D: LISTING VIOLATIONS & POLICY HEALTH (YOUR ACCOUNT)
-# ==========================================================
-elif selected_page == "⚠️ Listing Violations & Policy":
-    st.markdown(
-        """
-    <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 8px;">
-        <img src="https://upload.wikimedia.org/wikipedia/commons/1/1b/EBay_logo.svg" width="75">
-        <h2 style="margin: 0; color: #0F172A; font-weight: 700;">Listing Violations & Policy Health</h2>
-    </div>
-    """,
-        unsafe_allow_html=True,
-    )
-    st.caption("Live inspection of policy violations, VeRO/Copyright alerts, out-of-stock compliance, and listing warnings.")
-
-    if not accessible_stores:
-        st.info("👋 Welcome! Your store is not connected yet.")
-    else:
-        active_violation_store = st.selectbox(
-            "Select Store Channel to Audit:", list(accessible_stores.keys()), key="store_violation_select"
-        )
-        tokens = accessible_stores[active_violation_store]
-
-        c_v1, c_v2 = st.columns([3, 1.2])
-        with c_v1:
-            market_violation_choice = st.selectbox(
-                "Target Marketplace:",
-                ["eBay US (EBAY_US)", "eBay UK (EBAY_GB)", "eBay Germany (EBAY_DE)", "eBay Australia (EBAY_AU)"],
-                key="market_violation_select"
-            )
-            v_market_id = market_violation_choice.split("(")[1].replace(")", "").strip()
-        with c_v2:
-            st.write("")
-            scan_violations_btn = st.button("🔍 Scan Store Policy Health", type="primary", use_container_width=True, key="scan_v_btn")
-
-        violations_cache_key = f"violations_{active_violation_store}_{v_market_id}"
-
-        if scan_violations_btn or violations_cache_key not in st.session_state:
-            with st.spinner("Auditing eBay listings for policy compliance and violations..."):
-                access_token = tokens["access_token"]
-                test_headers = {"Authorization": f"Bearer {access_token}"}
-                test_res = requests.get("https://api.ebay.com/sell/compliance/v1/listing_violation?compliance_type=OUT_OF_STOCK&limit=1", headers=test_headers)
-                
-                if test_res.status_code != 200 and tokens.get("refresh_token"):
-                    new_t = get_fresh_token(tokens["refresh_token"])
-                    if new_t:
-                        stores[active_violation_store]["access_token"] = new_t
-                        save_json(STORES_FILE, stores)
-                        access_token = new_t
-
-                fetched_violations = fetch_ebay_compliance_violations(access_token, v_market_id)
-                st.session_state[violations_cache_key] = fetched_violations
-
-        raw_violations = st.session_state.get(violations_cache_key, [])
-
-        parsed_violations = []
-        critical_count = 0
-        warning_count = 0
-
-        for v in raw_violations:
-            listing_id = v.get("listingId", "N/A")
-            c_type = v.get("compliance_type", "GENERAL").replace("_", " ").title()
-            
-            for detail in v.get("violations", []):
-                reason = detail.get("reason", "Policy Non-Compliance")
-                message = detail.get("message", "Review listing according to eBay guidelines.")
-                severity = str(detail.get("severity", "WARNING")).upper()
-                
-                if severity == "BLOCK" or severity == "ERROR":
-                    critical_count += 1
-                    badge = "🔴 Critical / Blocked"
-                else:
-                    warning_count += 1
-                    badge = "🟡 Warning"
-
-                action = ""
-                for act in detail.get("correctiveActions", []):
-                    action += act.get("description", "") + " "
-
-                parsed_violations.append({
-                    "Listing ID": listing_id,
-                    "Policy Type": c_type,
-                    "Severity": badge,
-                    "Reason": reason,
-                    "Details": message,
-                    "Corrective Action": action.strip() if action else "Update listing details in Seller Hub",
-                    "Item Link": f"https://www.ebay.com/itm/{listing_id}" if listing_id != "N/A" else "#",
-                    "RawSeverity": severity
-                })
-
-        st.divider()
-
-        vk1, vk2, vk3 = st.columns(3)
-        vk1.metric("Total Flagged Listings", len(set([x['Listing ID'] for x in parsed_violations])))
-        vk2.metric("Critical Action Items (Block)", critical_count)
-        vk3.metric("Policy Warnings", warning_count)
-
-        st.divider()
-
-        if parsed_violations:
-            sev_choice = st.radio("Filter Violations by Severity:", ["All Issues", "Critical Only", "Warnings Only"], horizontal=True)
-            
-            if sev_choice == "Critical Only":
-                df_v_display = [x for x in parsed_violations if "Critical" in x["Severity"]]
-            elif sev_choice == "Warnings Only":
-                df_v_display = [x for x in parsed_violations if "Warning" in x["Severity"]]
-            else:
-                df_v_display = parsed_violations
-
-            df_v = pd.DataFrame(df_v_display).drop(columns=["RawSeverity"], errors="ignore")
-
-            vc_title, vc_dl = st.columns([3, 1])
-            with vc_title:
-                st.markdown(f"#### 📋 Active Violations Report ({len(df_v_display)} issues found)")
-            with vc_dl:
-                csv_v_buffer = io.StringIO()
-                df_v.to_csv(csv_v_buffer, index=False)
-                st.download_button(
-                    label="📥 Export Violations CSV",
-                    data=csv_v_buffer.getvalue(),
-                    file_name=f"eBay_Violations_{active_violation_store}_{datetime.now().strftime('%Y%m%d')}.csv",
-                    mime="text/csv",
-                    use_container_width=True,
-                    type="primary"
-                )
-
-            st.dataframe(
-                df_v,
-                column_config={
-                    "Item Link": st.column_config.LinkColumn("Open Listing")
-                },
-                use_container_width=True,
-                hide_index=True
-            )
-        else:
-            st.success("🎉 Great news! No policy violations or compliance warnings found for this store.")
-
-# ==========================================================
-# PAGE E: LINK & MANAGE STORES
+# 5. LINK & MANAGE STORES
 # ==========================================================
 elif (
     "Connect My eBay Store" in selected_page
@@ -1645,10 +1638,10 @@ elif (
                         st.rerun()
 
 # ==========================================================
-# PAGE F: REGISTERED CLIENTS OVERVIEW (ADMIN ONLY)
+# 6. REGISTERED CLIENTS OVERVIEW (ADMIN ONLY)
 # ==========================================================
 elif (
-    selected_page == "Registered Clients Overview"
+    selected_page == "👥 Registered Clients Overview"
     and st.session_state.role == "admin"
 ):
     st.markdown("## 👥 Self-Registered Clients & Stores")
@@ -1694,7 +1687,7 @@ elif (
                     st.rerun()
 
 # ==========================================================
-# PAGE G: MESSAGE TEMPLATES (CLIENT & ADMIN)
+# 7. MESSAGE TEMPLATES (CLIENT & ADMIN)
 # ==========================================================
 elif "Message Templates" in selected_page:
     st.markdown("## 📝 Message Templates Settings")
