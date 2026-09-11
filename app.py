@@ -1898,7 +1898,7 @@ elif (
                         unsafe_allow_html=True,
                     )
                     if st.button(
-                        f"🗑️ Disconnect {s_name}",
+                        f"🗑️ Disdisconnect {s_name}",
                         key=f"del_store_{s_name}",
                         type="secondary",
                     ):
@@ -1910,7 +1910,7 @@ elif (
                         st.rerun()
 
 # ==========================================================
-# 5.5 CHROME EXTENSION DOWNLOAD HUB (AUTO-DETECT STREAMLIT URL)
+# 5.5 CHROME EXTENSION DOWNLOAD HUB (FULLY AUTOMATED DOMAIN)
 # ==========================================================
 elif "Download Chrome Extension" in selected_page:
     st.markdown("## 🧩 Auto-Fulfillment Chrome Extension Hub")
@@ -1929,16 +1929,10 @@ elif "Download Chrome Extension" in selected_page:
         6. On any supplier checkout page (AliExpress, CJ Dropshipping, etc.), click the extension icon, enter your **eBay Order ID**, and click **Sync & Auto-Fill**!
         """)
         
-        # Automatically detect current active app domain
-        current_app_origin = st.query_params.get("portal_url", "https://nawazarbi-ebay-dashboard.streamlit.app")
-        
-        # Let's provide a pre-filled box where current window domain is auto-injected if possible, or they can put their exact cloud URL once
-        portal_domain_input = st.text_input("Your Portal Cloud URL (Auto-Configured):", value="https://ebay-automation.streamlit.app", key="portal_domain_box")
-
         ext_manifest = json.dumps({
             "manifest_version": 3,
             "name": "eBay Direct Order Autofill",
-            "version": "2.4",
+            "version": "2.5",
             "description": "Fetch buyer address via eBay Order ID and auto-fill checkout pages.",
             "permissions": ["storage", "activeTab", "scripting", "tabs"],
             "host_permissions": ["https://*/*", "http://*/*"],
@@ -2004,32 +1998,38 @@ elif "Download Chrome Extension" in selected_page:
 </body>
 </html>"""
 
-        ext_popup_js = f"""
-        const PORTAL_URL = "{portal_domain_input.strip()}";
-
-        document.getElementById('btnSyncFill').addEventListener('click', async () => {{
+        ext_popup_js = """
+        document.getElementById('btnSyncFill').addEventListener('click', async () => {
           const oid = document.getElementById('orderIdInput').value.trim();
-          if(!oid) {{ alert("Please enter a valid Order ID"); return; }}
-          document.getElementById('lblStatus').innerText = "Connecting to Portal...";
+          if(!oid) { alert("Please enter a valid Order ID"); return; }
+          document.getElementById('lblStatus').innerText = "Locating Portal...";
           
-          try {{
-            const fetchUrl = PORTAL_URL.endsWith('/') ? PORTAL_URL + "?api_order_id=" + oid : PORTAL_URL + "/?api_order_id=" + oid;
-            const res = await fetch(fetchUrl);
+          try {
+            const tabs = await chrome.tabs.query({ url: "*://*.streamlit.app/*" });
+            if (!tabs || tabs.length === 0) {
+              document.getElementById('lblStatus').innerText = "Error: Open your portal tab first!";
+              return;
+            }
+            
+            const portalUrl = new URL(tabs[0].url).origin;
+            document.getElementById('lblStatus').innerText = "Fetching Order...";
+            
+            const res = await fetch(portalUrl + "/?api_order_id=" + oid);
             const orderData = await res.json();
             
-            if(orderData.error) {{
+            if(orderData.error) {
               document.getElementById('lblStatus').innerText = "Error: Order not found";
               return;
-            }}
+            }
             
-            const tabs = await chrome.tabs.query({{ active: true, currentWindow: true }});
-            chrome.tabs.sendMessage(tabs[0].id, {{ action: "autofill_order", orderData: orderData }}, (resp) => {{
+            const activeTabs = await chrome.tabs.query({ active: true, currentWindow: true });
+            chrome.tabs.sendMessage(activeTabs[0].id, { action: "autofill_order", orderData: orderData }, (resp) => {
               document.getElementById('lblStatus').innerText = (resp && resp.status === "success") ? "Filled Successfully!" : "Open Checkout Page!";
-            }});
-          }} catch(e) {{
+            });
+          } catch(e) {
             document.getElementById('lblStatus').innerText = "Connection Failed";
-          }}
-        }});
+          }
+        });
         """
 
         import zipfile
@@ -2053,7 +2053,7 @@ elif "Download Chrome Extension" in selected_page:
     with col_ex2:
         st.markdown("""
         ### 🔒 Secure & Verified
-        * **Direct Live Sync:** Connects directly via your portal's active eBay token.
+        * **Auto-Discovery:** Automatically finds your open portal tab without manual links.
         * **Instant Lookup:** Pulls buyer name, street, city, and zip using only the Order ID.
         * **Compatible With:** Google Chrome, Microsoft Edge, and Brave browsers.
         """)
