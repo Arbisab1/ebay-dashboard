@@ -217,8 +217,7 @@ ALL_MODULES = [
     "Product Hunting & Research",
     "Listing Violations & Policy",
     "Sales & Revenue Reports",
-    "Connect eBay Store",
-    "Chrome Extension"
+    "Connect eBay Store"
 ]
 
 # --- PERSISTENCE & EMAIL ENGINE ---
@@ -595,35 +594,6 @@ if "allowed_modules" not in st.session_state:
     st.session_state.allowed_modules = ALL_MODULES
 
 query_params = st.query_params
-
-# --- DIRECT ORDER SYNC API HANDLER FOR EXTENSION ---
-if "api_order_id" in query_params:
-    target_oid = query_params["api_order_id"]
-    found_order_data = None
-    for s_name, tokens in stores.items():
-        access_token = tokens.get("access_token")
-        if access_token:
-            try:
-                headers = {"Authorization": f"Bearer {access_token}"}
-                r = requests.get(f"https://api.ebay.com/sell/fulfillment/v1/order/{target_oid}", headers=headers)
-                if r.status_code == 200:
-                    o = r.json()
-                    ship_to = o.get("fulfillmentStartInstructions", [{}])[0].get("shippingStep", {}).get("shipTo", {})
-                    contact = ship_to.get("contactAddress", {})
-                    found_order_data = {
-                        "orderId": target_oid,
-                        "buyerName": ship_to.get("fullName", o.get("buyer", {}).get("username", "Buyer")),
-                        "phone": ship_to.get("primaryPhone", {}).get("phoneNumber", "1234567890"),
-                        "street": contact.get("addressLine1", ""),
-                        "city": contact.get("city", ""),
-                        "postalCode": contact.get("postalCode", "")
-                    }
-                    break
-            except Exception:
-                pass
-    
-    st.json(found_order_data if found_order_data else {"error": "Order not found"})
-    st.stop()
 
 if not st.session_state.logged_in and "session_user" in query_params:
     saved_user = query_params["session_user"]
@@ -1008,9 +978,6 @@ with st.sidebar:
 
     if "Connect eBay Store" in user_modules or st.session_state.role == "admin":
         nav_options.append("➕ Link & Manage eBay Stores" if st.session_state.role == "admin" else "➕ Connect My eBay Store")
-
-    if "Chrome Extension" in user_modules or st.session_state.role == "admin":
-        nav_options.append("🧩 Download Chrome Extension")
 
     if st.session_state.role == "admin":
         nav_options.append("👥 Registered Clients Overview")
@@ -1913,169 +1880,6 @@ elif (
                         st.rerun()
 
 # ==========================================================
-# 5.5 CHROME EXTENSION DOWNLOAD HUB (DIRECT API BRIDGE)
-# ==========================================================
-elif "Download Chrome Extension" in selected_page:
-    st.markdown("## 🧩 Auto-Fulfillment Chrome Extension Hub")
-    st.caption("Download and install our official browser extension for direct API order synchronization.")
-
-    col_ex1, col_ex2 = st.columns([1.5, 1])
-
-    with col_ex1:
-        st.markdown("""
-        ### 🚀 How to Install & Use:
-        1. Click the **Download Extension Package** button below to get the `.zip` file.
-        2. Extract/unzip the downloaded folder on your computer.
-        3. Open Google Chrome and go to `chrome://extensions/`.
-        4. Turn on **Developer mode** (top right corner).
-        5. Click **Load unpacked** (top left) and select the extracted extension folder.
-        6. On any supplier checkout page, click the extension, type your **eBay Order ID**, and click **Sync & Auto-Fill**!
-        """)
-        
-        ext_manifest = json.dumps({
-            "manifest_version": 3,
-            "name": "eBay Direct Order Autofill",
-            "version": "5.0",
-            "description": "Fetch buyer address via eBay Order ID and auto-fill checkout pages.",
-            "permissions": ["storage", "activeTab", "scripting", "tabs"],
-            "host_permissions": ["https://*/*", "http://*/*"],
-            "action": {"default_popup": "popup.html"},
-            "content_scripts": [{
-                "matches": ["https://*.aliexpress.com/*", "https://*.cjdropshipping.com/*", "https://*.amazon.com/*"],
-                "js": ["content.js"],
-                "run_at": "document_end"
-            }]
-        }, indent=4)
-
-        ext_content_js = """
-        chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-          if (request.action === "autofill_order") {
-            const data = request.orderData;
-            try {
-              const setReactValue = (element, value) => {
-                if (!element) return;
-                const lastValue = element.value;
-                element.value = value;
-                const tracker = element._valueTracker;
-                if (tracker) {
-                  tracker.setValue(lastValue);
-                }
-                element.dispatchEvent(new Event('input', { bubbles: true }));
-                element.dispatchEvent(new Event('change', { bubbles: true }));
-                element.dispatchEvent(new KeyboardEvent('keydown', { bubbles: true }));
-                element.dispatchEvent(new KeyboardEvent('keypress', { bubbles: true }));
-                element.dispatchEvent(new KeyboardEvent('keyup', { bubbles: true }));
-              };
-
-              const nameInput = document.querySelector('input[name="contactName"], input[id*="contactName"], input[placeholder*="Contact Name"], input[placeholder*="Name"]');
-              const phoneInput = document.querySelector('input[name="mobileNo"], input[id*="mobileNo"], input[placeholder*="Phone"], input[type="tel"]');
-              const streetInput = document.querySelector('input[name="address"], textarea[placeholder*="Street"], input[placeholder*="Address"], textarea[id*="address"]');
-              const cityInput = document.querySelector('input[name="city"], input[placeholder*="City"], input[id*="city"]');
-              const zipInput = document.querySelector('input[name="zip"], input[placeholder*="Post"], input[placeholder*="Zip"], input[id*="zip"]');
-
-              if (nameInput) setReactValue(nameInput, data.buyerName);
-              if (phoneInput) setReactValue(phoneInput, data.phone);
-              if (streetInput) setReactValue(streetInput, data.street);
-              if (cityInput) setReactValue(cityInput, data.city);
-              if (zipInput) setReactValue(zipInput, data.postalCode);
-
-              sendResponse({ status: "success" });
-            } catch (err) { 
-              sendResponse({ status: "error", message: err.toString() }); 
-            }
-          }
-        });
-        """
-
-        ext_popup_html = """<!DOCTYPE html>
-<html>
-<head><meta charset="utf-8">
-<style>
-  body { width: 280px; font-family: sans-serif; padding: 12px; background: #F8FAFC; color: #0F172A; margin: 0; }
-  h3 { margin-top: 0; font-size: 14px; color: #2563EB; }
-  .card { background: #FFFFFF; border: 1px solid #CBD5E1; padding: 10px; border-radius: 8px; font-size: 12px; margin-bottom: 10px; }
-  input { width: 100%; padding: 6px; box-sizing: border-box; margin-top: 4px; border: 1px solid #CBD5E1; border-radius: 4px; }
-  button { width: 100%; background: #2563EB; color: white; border: none; padding: 9px; border-radius: 6px; font-weight: bold; cursor: pointer; margin-top: 8px; }
-  button:hover { background: #1D4ED8; }
-  p { margin: 4px 0; }
-  #lblStatus { font-weight: 600; color: #16A34A; }
-</style>
-</head>
-<body>
-  <h3>📦 eBay Order Sync</h3>
-  <div class="card">
-    <p>Enter eBay Order ID:</p>
-    <input type="text" id="orderIdInput" placeholder="e.g. 12-09876-54321">
-  </div>
-  <button id="btnSyncFill">🔄 Sync & Auto-Fill</button>
-  <p style="margin-top: 8px; font-size: 11px;">Status: <span id="lblStatus">Ready</span></p>
-  <script src="popup.js"></script>
-</body>
-</html>"""
-
-        ext_popup_js = """
-        document.getElementById('btnSyncFill').addEventListener('click', async () => {
-          const oid = document.getElementById('orderIdInput').value.trim();
-          if(!oid) { alert("Please enter a valid Order ID"); return; }
-          document.getElementById('lblStatus').innerText = "Locating Portal...";
-          
-          try {
-            const tabs = await chrome.tabs.query({});
-            const portalTab = tabs.find(t => t.url && (t.url.includes("streamlit.app") || t.url.includes("localhost")));
-            
-            if (!portalTab) {
-              document.getElementById('lblStatus').innerText = "Error: Open portal tab first!";
-              return;
-            }
-            
-            const portalUrl = new URL(portalTab.url).origin;
-            document.getElementById('lblStatus').innerText = "Fetching Order...";
-            
-            const res = await fetch(portalUrl + "/?api_order_id=" + oid);
-            const orderData = await res.json();
-            
-            if(orderData.error) {
-              document.getElementById('lblStatus').innerText = "Error: Order not found";
-              return;
-            }
-            
-            const activeTabs = await chrome.tabs.query({ active: true, currentWindow: true });
-            chrome.tabs.sendMessage(activeTabs[0].id, { action: "autofill_order", orderData: orderData }, (resp) => {
-              document.getElementById('lblStatus').innerText = (resp && resp.status === "success") ? "Filled Successfully!" : "Open Checkout Page!";
-            });
-          } catch(e) {
-            document.getElementById('lblStatus').innerText = "Connection Failed";
-          }
-        });
-        """
-
-        import zipfile
-        zip_buffer = io.BytesIO()
-        with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zf:
-            zf.writestr("manifest.json", ext_manifest)
-            zf.writestr("content.js", ext_content_js)
-            zf.writestr("popup.html", ext_popup_html)
-            zf.writestr("popup.js", ext_popup_js)
-        
-        st.write("")
-        st.download_button(
-            label="📦 Download Extension Package (.zip)",
-            data=zip_buffer.getvalue(),
-            file_name="eBay_Auto_Fulfillment_Extension.zip",
-            mime="application/zip",
-            type="primary",
-            use_container_width=True
-        )
-
-    with col_ex2:
-        st.markdown("""
-        ### 🔒 Secure & Verified
-        * **Direct Auto-Sync:** Pulls data directly from your open portal using Order ID.
-        * **React Compatible:** Automatically triggers React state trackers on checkout pages.
-        * **Compatible With:** Google Chrome, Microsoft Edge, and Brave browsers.
-        """)
-
-# ==========================================================
 # 6. REGISTERED CLIENTS OVERVIEW (ADMIN ONLY)
 # ==========================================================
 elif (
@@ -2151,8 +1955,6 @@ elif (
                             new_selected_modules.append("Sales & Revenue Reports")
                         if st.checkbox("➕ Connect eBay Store", value=("Connect eBay Store" in curr_allowed), key=f"chk_store_{u}"):
                             new_selected_modules.append("Connect eBay Store")
-                        if st.checkbox("🧩 Chrome Extension", value=("Chrome Extension" in curr_allowed), key=f"chk_ext_{u}"):
-                            new_selected_modules.append("Chrome Extension")
 
                     c_save_mod, c_del_user = st.columns([2, 1])
                     with c_save_mod:
