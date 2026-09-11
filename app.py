@@ -1775,6 +1775,79 @@ elif selected_page == "📈 Sales & Revenue Reports":
             st.info("No sales records found for this period. Click '🔄 Sync Sales Data' to fetch.")
 
 # ==========================================================
+# 4.5 EBAY FEES & PROFIT CALCULATOR (MANUAL TOTAL FEES & COUNTRY)
+# ==========================================================
+elif selected_page == "💰 eBay Fees & Profit Calculator":
+    st.markdown(
+        """
+    <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 8px;">
+        <img src="https://upload.wikimedia.org/wikipedia/commons/1/1b/EBay_logo.svg" width="75">
+        <h2 style="margin: 0; color: #0F172A; font-weight: 700;">eBay Fees & Profit Calculator</h2>
+    </div>
+    """,
+        unsafe_allow_html=True,
+    )
+    st.caption("Calculate exact net profit margins by entering your selling price, sourcing cost, shipping, promoted ads, and total custom fees.")
+
+    calc_c1, calc_c2 = st.columns(2)
+    with calc_c1:
+        st.markdown("#### 📥 Pricing & Expense Inputs")
+        
+        # Country Selector
+        country_choice = st.selectbox(
+            "Select Target Marketplace / Country:",
+            ["🇺🇸 United States (USD)", "🇬🇧 United Kingdom (GBP)", "🇦🇺 Australia (AUD)", "🇩🇪 Germany / Europe (EUR)"],
+            key="calc_country_select"
+        )
+        
+        if "United States" in country_choice:
+            currency_symbol = "$"
+        elif "United Kingdom" in country_choice:
+            currency_symbol = "£"
+        elif "Australia" in country_choice:
+            currency_symbol = "A$"
+        else:
+            currency_symbol = "€"
+
+        selling_price = st.number_input(f"Target Selling Price ({currency_symbol}):", min_value=0.0, value=49.99, step=1.0)
+        item_cost = st.number_input(f"Item Sourcing Cost ({currency_symbol}):", min_value=0.0, value=15.00, step=1.0)
+        shipping_cost = st.number_input(f"Shipping Cost ({currency_symbol}):", min_value=0.0, value=4.50, step=0.50)
+        
+        # Manual Total Custom Fees field
+        total_custom_fees = st.number_input(f"Total Custom Fees ({currency_symbol}):", min_value=0.0, value=6.50, step=0.25, help="Enter your total custom or estimated fees.")
+        ad_rate_pct = st.number_input("Promoted Listings Ad Rate (%):", min_value=0.0, max_value=50.0, value=2.0, step=0.5)
+
+    with calc_c2:
+        st.markdown("#### 📊 Financial Breakdown & Margins")
+        
+        calculated_ad_fee = selling_price * (ad_rate_pct / 100.0)
+        total_expenses = item_cost + shipping_cost + total_custom_fees + calculated_ad_fee
+        net_profit = selling_price - total_expenses
+        net_margin = (net_profit / selling_price * 100.0) if selling_price > 0 else 0.0
+
+        st.write("")
+        mc1, mc2 = st.columns(2)
+        mc1.metric("Net Profit", f"{currency_symbol}{net_profit:,.2f}")
+        mc2.metric("Net Profit Margin", f"{net_margin:.1f}%")
+
+        st.write("")
+        st.markdown(
+            f"""
+        <div style="background: #FFFFFF; border: 1px solid #CBD5E1; border-radius: 10px; padding: 16px;">
+            <p style="margin: 4px 0;"><b>Marketplace:</b> {country_choice.split('(')[0]}</p>
+            <p style="margin: 4px 0;"><b>Selling Price:</b> {currency_symbol}{selling_price:,.2f}</p>
+            <p style="margin: 4px 0;"><b>Sourcing Cost:</b> -{currency_symbol}{item_cost:,.2f}</p>
+            <p style="margin: 4px 0;"><b>Shipping Expense:</b> -{currency_symbol}{shipping_cost:,.2f}</p>
+            <p style="margin: 4px 0;"><b>Total Custom Fees:</b> -{currency_symbol}{total_custom_fees:,.2f}</p>
+            <p style="margin: 4px 0;"><b>Promoted Ads Fee:</b> -{currency_symbol}{calculated_ad_fee:,.2f}</p>
+            <hr style="margin: 8px 0; border-color: #E2E8F0;">
+            <p style="margin: 4px 0; font-size: 1.05rem;"><b>Total Expenses:</b> {currency_symbol}{total_expenses:,.2f}</p>
+        </div>
+        """,
+            unsafe_allow_html=True,
+        )
+
+# ==========================================================
 # 5. LINK & MANAGE STORES
 # ==========================================================
 elif (
