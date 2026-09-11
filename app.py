@@ -1923,11 +1923,11 @@ elif (
                         st.rerun()
 
 # ==========================================================
-# 5.5 CHROME EXTENSION DOWNLOAD HUB (REACT COMPLIANT BRIDGE)
+# 5.5 CHROME EXTENSION DOWNLOAD HUB (DIRECT API BRIDGE)
 # ==========================================================
 elif "Download Chrome Extension" in selected_page:
     st.markdown("## 🧩 Auto-Fulfillment Chrome Extension Hub")
-    st.caption("Download and install our official browser extension for 1-click React-compatible auto-filling.")
+    st.caption("Download and install our official browser extension for direct API order synchronization.")
 
     col_ex1, col_ex2 = st.columns([1.5, 1])
 
@@ -1939,16 +1939,16 @@ elif "Download Chrome Extension" in selected_page:
         3. Open Google Chrome and go to `chrome://extensions/`.
         4. Turn on **Developer mode** (top right corner).
         5. Click **Load unpacked** (top left) and select the extracted extension folder.
-        6. In your portal orders view, copy the order snippet and click **Paste & Auto-Fill** on AliExpress checkout page!
+        6. On any supplier checkout page, click the extension, type your **eBay Order ID**, and click **Sync & Auto-Fill**!
         """)
         
         ext_manifest = json.dumps({
             "manifest_version": 3,
-            "name": "eBay React Checkout Autofill",
-            "version": "4.1",
-            "description": "Fulfill AliExpress and supplier orders seamlessly.",
-            "permissions": ["storage", "activeTab", "scripting"],
-            "host_permissions": ["https://*.aliexpress.com/*", "https://*.cjdropshipping.com/*", "https://*.amazon.com/*"],
+            "name": "eBay Direct Order Autofill",
+            "version": "5.0",
+            "description": "Fetch buyer address via eBay Order ID and auto-fill checkout pages.",
+            "permissions": ["storage", "activeTab", "scripting", "tabs"],
+            "host_permissions": ["https://*/*", "http://*/*"],
             "action": {"default_popup": "popup.html"},
             "content_scripts": [{
                 "matches": ["https://*.aliexpress.com/*", "https://*.cjdropshipping.com/*", "https://*.amazon.com/*"],
@@ -1959,7 +1959,7 @@ elif "Download Chrome Extension" in selected_page:
 
         ext_content_js = """
         chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-          if (request.action === "autofill_clipboard") {
+          if (request.action === "autofill_order") {
             const data = request.orderData;
             try {
               const setReactValue = (element, value) => {
@@ -2004,7 +2004,7 @@ elif "Download Chrome Extension" in selected_page:
   body { width: 280px; font-family: sans-serif; padding: 12px; background: #F8FAFC; color: #0F172A; margin: 0; }
   h3 { margin-top: 0; font-size: 14px; color: #2563EB; }
   .card { background: #FFFFFF; border: 1px solid #CBD5E1; padding: 10px; border-radius: 8px; font-size: 12px; margin-bottom: 10px; }
-  textarea { width: 100%; height: 75px; padding: 6px; box-sizing: border-box; margin-top: 4px; border: 1px solid #CBD5E1; border-radius: 4px; font-size: 11px; }
+  input { width: 100%; padding: 6px; box-sizing: border-box; margin-top: 4px; border: 1px solid #CBD5E1; border-radius: 4px; }
   button { width: 100%; background: #2563EB; color: white; border: none; padding: 9px; border-radius: 6px; font-weight: bold; cursor: pointer; margin-top: 8px; }
   button:hover { background: #1D4ED8; }
   p { margin: 4px 0; }
@@ -2012,36 +2012,49 @@ elif "Download Chrome Extension" in selected_page:
 </style>
 </head>
 <body>
-  <h3>📦 React Checkout Auto-Fill</h3>
+  <h3>📦 eBay Order Sync</h3>
   <div class="card">
-    <p>Paste Order JSON from Portal:</p>
-    <textarea id="orderJsonInput" placeholder='Paste JSON here...'></textarea>
+    <p>Enter eBay Order ID:</p>
+    <input type="text" id="orderIdInput" placeholder="e.g. 12-09876-54321">
   </div>
-  <button id="btnPasteFill">⚡ Auto-Fill Address</button>
+  <button id="btnSyncFill">🔄 Sync & Auto-Fill</button>
   <p style="margin-top: 8px; font-size: 11px;">Status: <span id="lblStatus">Ready</span></p>
   <script src="popup.js"></script>
 </body>
 </html>"""
 
         ext_popup_js = """
-        document.getElementById('btnPasteFill').addEventListener('click', async () => {
-          const rawText = document.getElementById('orderJsonInput').value.trim();
-          if(!rawText) { alert("Please paste order details"); return; }
+        document.getElementById('btnSyncFill').addEventListener('click', async () => {
+          const oid = document.getElementById('orderIdInput').value.trim();
+          if(!oid) { alert("Please enter a valid Order ID"); return; }
+          document.getElementById('lblStatus').innerText = "Locating Portal...";
           
           try {
-            let orderData;
-            try {
-              orderData = JSON.parse(rawText);
-            } catch(e) {
-              orderData = { buyerName: rawText, phone: "1234567890", street: rawText, city: "City", postalCode: "00000" };
+            const tabs = await chrome.tabs.query({});
+            const portalTab = tabs.find(t => t.url && (t.url.includes("streamlit.app") || t.url.includes("localhost")));
+            
+            if (!portalTab) {
+              document.getElementById('lblStatus').innerText = "Error: Open portal tab first!";
+              return;
             }
             
-            const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
-            chrome.tabs.sendMessage(tabs[0].id, { action: "autofill_clipboard", orderData: orderData }, (resp) => {
+            const portalUrl = new URL(portalTab.url).origin;
+            document.getElementById('lblStatus').innerText = "Fetching Order...";
+            
+            const res = await fetch(portalUrl + "/?api_order_id=" + oid);
+            const orderData = await res.json();
+            
+            if(orderData.error) {
+              document.getElementById('lblStatus').innerText = "Error: Order not found";
+              return;
+            }
+            
+            const activeTabs = await chrome.tabs.query({ active: true, currentWindow: true });
+            chrome.tabs.sendMessage(activeTabs[0].id, { action: "autofill_order", orderData: orderData }, (resp) => {
               document.getElementById('lblStatus').innerText = (resp && resp.status === "success") ? "Filled Successfully!" : "Open Checkout Page!";
             });
           } catch(e) {
-            document.getElementById('lblStatus').innerText = "Fill Failed";
+            document.getElementById('lblStatus').innerText = "Connection Failed";
           }
         });
         """
@@ -2066,10 +2079,10 @@ elif "Download Chrome Extension" in selected_page:
 
     with col_ex2:
         st.markdown("""
-        ### 🔒 React Framework Compatible
-        * **Virtual DOM Bypass:** Triggers React state trackers so fields stay updated.
-        * **Zero Connection Errors:** No server timeouts or CORS blocks.
-        * **Compatible With:** AliExpress, CJ Dropshipping, and Amazon checkouts.
+        ### 🔒 Secure & Verified
+        * **Direct Auto-Sync:** Pulls data directly from your open portal using Order ID.
+        * **React Compatible:** Automatically triggers React state trackers on checkout pages.
+        * **Compatible With:** Google Chrome, Microsoft Edge, and Brave browsers.
         """)
 
 # ==========================================================
