@@ -591,7 +591,6 @@ if "assigned_stores" not in st.session_state:
 if "allowed_modules" not in st.session_state:
     st.session_state.allowed_modules = ALL_MODULES
 
-# Check URL query params for persistent session token across reloads
 query_params = st.query_params
 if not st.session_state.logged_in and "session_user" in query_params:
     saved_user = query_params["session_user"]
@@ -1903,14 +1902,15 @@ elif "Download Chrome Extension" in selected_page:
         ext_manifest = json.dumps({
             "manifest_version": 3,
             "name": "eBay Auto-Fulfillment Assistant",
-            "version": "1.0",
+            "version": "1.2",
             "description": "Auto-fill buyer shipping details on supplier checkout pages.",
-            "permissions": ["storage", "activeTab", "scripting"],
-            "host_permissions": ["https://*.aliexpress.com/*", "https://*.cjdropshipping.com/*"],
+            "permissions": ["storage", "activeTab", "scripting", "tabs"],
+            "host_permissions": ["https://*.aliexpress.com/*", "https://*.cjdropshipping.com/*", "https://*.amazon.com/*"],
             "action": {"default_popup": "popup.html"},
             "content_scripts": [{
-                "matches": ["https://*.aliexpress.com/*", "https://*.cjdropshipping.com/*"],
-                "js": ["content.js"]
+                "matches": ["https://*.aliexpress.com/*", "https://*.cjdropshipping.com/*", "https://*.amazon.com/*"],
+                "js": ["content.js"],
+                "run_at": "document_end"
             }]
         }, indent=4)
 
@@ -1919,15 +1919,23 @@ elif "Download Chrome Extension" in selected_page:
           if (request.action === "autofill_order") {
             const data = request.orderData;
             try {
-              const fillInput = (selector, val) => {
-                const el = document.querySelector(selector);
-                if (el && val) { el.value = val; el.dispatchEvent(new Event('input', { bubbles: true })); }
+              const setNativeValue = (element, value) => {
+                element.value = value;
+                element.dispatchEvent(new Event('input', { bubbles: true }));
+                element.dispatchEvent(new Event('change', { bubbles: true }));
               };
-              fillInput('input[name="contactName"], input[id*="contactName"]', data.buyerName);
-              fillInput('input[name="mobileNo"], input[id*="mobileNo"]', data.phone || "1234567890");
-              fillInput('input[name="address"], textarea[placeholder*="Street"]', data.street);
-              fillInput('input[name="city"]', data.city);
-              fillInput('input[name="zip"]', data.postalCode);
+              const inputs = {
+                name: document.querySelector('input[name="contactName"], input[id*="contactName"], input[placeholder*="Contact Name"], input[placeholder*="Name"]'),
+                phone: document.querySelector('input[name="mobileNo"], input[id*="mobileNo"], input[placeholder*="Phone"], input[type="tel"]'),
+                street: document.querySelector('input[name="address"], textarea[placeholder*="Street"], input[placeholder*="Address"]'),
+                city: document.querySelector('input[name="city"], input[placeholder*="City"]'),
+                zip: document.querySelector('input[name="zip"], input[placeholder*="Post"], input[placeholder*="Zip"]')
+              };
+              if (inputs.name) setNativeValue(inputs.name, data.buyerName);
+              if (inputs.phone) setNativeValue(inputs.phone, data.phone);
+              if (inputs.street) setNativeValue(inputs.street, data.street);
+              if (inputs.city) setNativeValue(inputs.city, data.city);
+              if (inputs.zip) setNativeValue(inputs.zip, data.postalCode);
               sendResponse({ status: "success" });
             } catch (err) { sendResponse({ status: "error", message: err.toString() }); }
           }
@@ -1937,8 +1945,32 @@ elif "Download Chrome Extension" in selected_page:
         ext_popup_html = """
         <!DOCTYPE html>
         <html>
-        <head><meta charset="utf-8"><style>body{width:260px;font-family:sans-serif;padding:10px;background:#F8FAFC;}h3{color:#2563EB;margin-top:0;}</style></head>
-        <body><h3>📦 eBay Fulfillment</h3><p>Extension is active and linked to your portal.</p></body>
+        <head><meta charset="utf-8">
+        <style>
+          body { width: 280px; font-family: sans-serif; padding: 12px; background: #F8FAFC; color: #0F172A; margin: 0; }
+          h3 { margin-top: 0; font-size: 14px; color: #2563EB; }
+          .card { background: #FFFFFF; border: 1px solid #CBD5E1; padding: 10px; border-radius: 8px; font-size: 12px; margin-bottom: 10px; }
+          button { width: 100%; background: #2563EB; color: white; border: none; padding: 8px; border-radius: 6px; font-weight: bold; cursor: pointer; }
+          button:hover { background: #1D4ED8; }
+          p { margin: 4px 0; }
+        </style>
+        </head>
+        <body>
+          <h3>📦 eBay Auto-Fulfillment</h3>
+          <div class="card">
+            <p><b>Status:</b> <span id="lblStatus" style="color: #16A34A; font-weight: 600;">Active & Ready</span></p>
+          </div>
+          <button id="btnFill">⚡ Auto-Fill Address</button>
+          <script>
+            document.getElementById('btnFill').addEventListener('click', async () => {
+              const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+              const sampleOrder = { buyerName: "John Doe", phone: "+15550199", street: "123 Main Street", city: "New York", postalCode: "10001" };
+              chrome.tabs.sendMessage(tab.id, { action: "autofill_order", orderData: sampleOrder }, (res) => {
+                document.getElementById('lblStatus').innerText = (res && res.status === "success") ? "Filled Successfully!" : "Open Checkout Fields First!";
+              });
+            });
+          </script>
+        </body>
         </html>
         """
 
