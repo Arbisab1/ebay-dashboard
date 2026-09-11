@@ -35,8 +35,11 @@ LOGS_FILE = "message_logs.json"
 
 AUTH_URL = (
     f"https://auth.ebay.com/oauth2/authorize?client_id={CLIENT_ID}&response_type=code&redirect_uri={RUNAME}&"
-    "scope=https%3A%2F%2Fapi.ebay.com%2Foauth%2Fapi_scope%20https%3A%2F%2Fapi.ebay.com%2Foauth%2Fapi_scope%2Fsell.fulfillment%20"
-    "https%3A%2F%2Fapi.ebay.com%2Foauth%2Fapi_scope%2Fcommerce.message"
+    "scope=https%3A%2F%2Fapi.ebay.com%2Foauth%2Fapi_scope%20"
+    "https%3A%2F%2Fapi.ebay.com%2Foauth%2Fapi_scope%2Fsell.fulfillment%20"
+    "https%3A%2F%2Fapi.ebay.com%2Foauth%2Fapi_scope%2Fsell.finances%20"
+    "https%3A%2F%2Fapi.ebay.com%2Foauth%2Fapi_scope%2Fcommerce.message%20"
+    "https%3A%2F%2Fapi.ebay.com%2Foauth%2Fapi_scope%2Fbuy.browse"
 )
 
 st.set_page_config(
@@ -275,6 +278,26 @@ def get_fresh_token(refresh_token):
         return res.json().get("access_token")
     return None
 
+def get_app_access_token():
+    creds = f"{CLIENT_ID}:{CLIENT_SECRET}"
+    encoded_creds = base64.b64encode(creds.encode()).decode()
+    headers = {
+        "Content-Type": "application/x-www-form-urlencoded",
+        "Authorization": f"Basic {encoded_creds}",
+    }
+    data = {
+        "grant_type": "client_credentials",
+        "scope": "https://api.ebay.com/oauth/api_scope",
+    }
+    res = requests.post(
+        "https://api.ebay.com/identity/v1/oauth2/token",
+        headers=headers,
+        data=data,
+    )
+    if res.status_code == 200:
+        return res.json().get("access_token")
+    return None
+
 @st.cache_data(show_spinner=False, ttl=3600)
 def fetch_all_ebay_orders_cached(access_token, date_filter_str):
     headers = {
@@ -336,14 +359,11 @@ def get_template_index(tpl_dict, target_key):
         return keys.index(target_key)
     return 0
 
-# --- ACCURATE ORDER STATUS DETECTION ---
 def get_clean_order_status(o):
-    # 1. Broad Cancel State Check (Top Priority)
     cancel_status_obj = o.get("cancelStatus", {})
     cancel_state = str(cancel_status_obj.get("cancelState", "")).strip().upper()
     cancel_req = cancel_status_obj.get("cancelRequests", [])
     
-    # Check item level cancellations
     line_item_cancelled = False
     for item in o.get("lineItems", []):
         item_status = str(item.get("lineItemFulfillmentStatus", "")).upper()
@@ -357,7 +377,6 @@ def get_clean_order_status(o):
     ):
         return "CANCELLED", "❌ Cancelled"
 
-    # 2. Refund Check
     payment_summary = o.get("paymentSummary", {})
     refunds_list = payment_summary.get("refunds", [])
     total_refunded_val = 0.0
@@ -371,7 +390,6 @@ def get_clean_order_status(o):
     if total_refunded_val > 0 or payment_status in ["REFUNDED", "PARTIALLY_REFUNDED"]:
         return "REFUNDED", "💸 Refunded"
 
-    # 3. Delivery & Shipping Detection
     f_status = o.get("orderFulfillmentStatus", "NOT_STARTED")
     instructions = o.get("fulfillmentStartInstructions", [])
     has_tracking = False
@@ -416,6 +434,45 @@ def get_clean_order_status(o):
         return "SHIPPED", "🚚 Shipped"
     else:
         return "NEW", "🆕 New Order"
+
+# --- PRODUCT HUNTING BROWSE API CALL ---
+def search_ebay_market(keyword, marketplace_id="EBAY_US", limit=50, sort_order="newlyListed", condition_filter="ALL"):
+    token = get_app_access_token()
+    if not token:
+        # Fallback to connected store token if available
+        if stores:
+            token = list(stores.values())[0].get("access_token")
+            
+    if not token:
+        return None, "No active API access token found."
+
+    headers = {
+        "Authorization": f"Bearer {token}",
+        "X-EBAY-C-MARKETPLACE-ID": marketplace_id,
+        "Content-Type": "application/json",
+    }
+    
+    url = f"https://api.ebay.com/buy/browse/v1/item_summary/search?q={requests.utils.quote(keyword)}&limit={limit}"
+    
+    # Sort order
+    if sort_order == "price_asc":
+        url += "&sort=price"
+    elif sort_order == "price_desc":
+        url += "&sort=-price"
+    elif sort_order == "newlyListed":
+        url += "&sort=newlyListed"
+        
+    # Condition
+    if condition_filter == "New":
+        url += "&filter=conditions:{NEW}"
+    elif condition_filter == "Used":
+        url += "&filter=conditions:{USED}"
+
+    res = requests.get(url, headers=headers)
+    if res.status_code == 200:
+        return res.json(), None
+    else:
+        return None, f"Error {res.status_code}: {res.text}"
 
 # --- INITIALIZE DATABASE ---
 stores = load_json(STORES_FILE, {})
@@ -602,6 +659,7 @@ with st.sidebar:
         nav_options = [
             "All Stores Orders & Messaging",
             "📈 Sales & Revenue Reports",
+            "🔍 Product Hunting & Research",
             "Link & Manage eBay Stores",
             "Registered Clients Overview",
             "Global Message Templates",
@@ -610,6 +668,7 @@ with st.sidebar:
         nav_options = [
             "My Orders & Auto-Messaging",
             "📈 Sales & Revenue Reports",
+            "🔍 Product Hunting & Research",
             "➕ Connect My eBay Store",
             "My Message Templates",
         ]
@@ -932,7 +991,7 @@ if "Orders &" in selected_page:
              st.info("No orders found for the selected store and date range.")
 
 # ==========================================================
-# PAGE B: SALES & REVENUE REPORTS (ACCURATE CANCELLED IDENTIFICATION)
+# PAGE B: SALES & REVENUE REPORTS
 # ==========================================================
 elif selected_page == "📈 Sales & Revenue Reports":
     st.markdown(
@@ -1017,7 +1076,6 @@ elif selected_page == "📈 Sales & Revenue Reports":
                 
                 pricing = o.get("pricingSummary", {})
                 
-                # Subtotal
                 subtotal_obj = pricing.get("priceSubtotal", {})
                 if not subtotal_obj:
                     subtotal_obj = pricing.get("subtotal", {})
@@ -1027,7 +1085,6 @@ elif selected_page == "📈 Sales & Revenue Reports":
 
                 status_raw, status_badge = get_clean_order_status(o)
 
-                # Line items & quantity
                 line_items = o.get("lineItems", [])
                 items_titles = []
                 total_qty = 0
@@ -1050,7 +1107,6 @@ elif selected_page == "📈 Sales & Revenue Reports":
 
             st.divider()
 
-            # --- STATUS SEGMENT SELECTOR ---
             st.markdown("#### 🎯 Select Sheet Category")
             sales_segment_options = [
                 "📊 All Successful Sales",
@@ -1062,7 +1118,6 @@ elif selected_page == "📈 Sales & Revenue Reports":
             ]
             chosen_segment = st.selectbox("View Report Sheet:", sales_segment_options, key="sales_segment_selector")
 
-            # Filter rows based on segment
             if chosen_segment == "📊 All Successful Sales":
                 filtered_rows = [r for r in parsed_all_rows if r["RawStatus"] not in ["CANCELLED", "REFUNDED"]]
             elif chosen_segment == "🚚 Shipped Orders (In-Transit)":
@@ -1076,13 +1131,11 @@ elif selected_page == "📈 Sales & Revenue Reports":
             else:
                 filtered_rows = parsed_all_rows
 
-            # KPI Calculations
             segment_subtotal = sum(r["Amount subtotal"] for r in filtered_rows)
             segment_orders_count = len(filtered_rows)
             segment_items_count = sum(r["Quantity"] for r in filtered_rows)
             segment_aov = (segment_subtotal / segment_orders_count) if segment_orders_count > 0 else 0.0
 
-            # KPI Display
             k1, k2, k3, k4 = st.columns(4)
             k1.metric("Total Subtotal", f"{currency_code} {segment_subtotal:,.2f}")
             k2.metric("Total Orders", segment_orders_count)
@@ -1091,7 +1144,6 @@ elif selected_page == "📈 Sales & Revenue Reports":
 
             st.divider()
 
-            # Format and Export Table safely
             expected_cols = ["Order ID", "Date", "Buyer", "Items", "Quantity", "Amount subtotal", "Currency", "Status"]
             if filtered_rows:
                 df_display = pd.DataFrame(filtered_rows).drop(columns=["RawStatus"], errors="ignore")
@@ -1123,7 +1175,139 @@ elif selected_page == "📈 Sales & Revenue Reports":
             st.info("No sales records found for this period. Click '🔄 Sync Sales Data' to fetch.")
 
 # ==========================================================
-# PAGE C: LINK & MANAGE STORES (ADMIN OR CLIENT SELF-CONNECT)
+# PAGE C: PRODUCT HUNTING & MARKET RESEARCH (DEDICATED)
+# ==========================================================
+elif selected_page == "🔍 Product Hunting & Research":
+    st.markdown(
+        """
+    <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 8px;">
+        <img src="https://upload.wikimedia.org/wikipedia/commons/1/1b/EBay_logo.svg" width="75">
+        <h2 style="margin: 0; color: #0F172A; font-weight: 700;">Product Hunting & Competitor Research</h2>
+    </div>
+    """,
+        unsafe_allow_html=True,
+    )
+    st.caption("Live marketplace competitor search, price trends, and product hunting metrics.")
+
+    # Search & Filters Bar
+    with st.container():
+        st.markdown("#### 🔎 Research Product Niche / Keyword")
+        r_col1, r_col2, r_col3, r_col4 = st.columns([3, 1.5, 1.5, 1.2])
+
+        with r_col1:
+            search_query = st.text_input("Enter Product Title or Keyword:", placeholder="e.g. Wireless Earbuds, iPhone 14 Case", key="hunt_search_input")
+        with r_col2:
+            market_choice = st.selectbox("Target Market:", ["eBay US (EBAY_US)", "eBay UK (EBAY_GB)", "eBay Germany (EBAY_DE)", "eBay Australia (EBAY_AU)"], key="hunt_market_select")
+            market_id = market_choice.split("(")[1].replace(")", "").strip()
+        with r_col3:
+            cond_choice = st.selectbox("Item Condition:", ["ALL", "New", "Used"], key="hunt_cond_select")
+        with r_col4:
+            sort_choice = st.selectbox("Sort Order:", ["Newly Listed", "Price: Low to High", "Price: High to Low"], key="hunt_sort_select")
+            sort_map = {"Newly Listed": "newlyListed", "Price: Low to High": "price_asc", "Price: High to Low": "price_desc"}
+            active_sort = sort_map[sort_choice]
+
+        c_hunt_btn, _ = st.columns([1.5, 4])
+        with c_hunt_btn:
+            hunt_submit = st.button("🚀 Analyze & Hunt Product", type="primary", use_container_width=True, key="hunt_submit_btn")
+
+    if hunt_submit and search_query:
+        with st.spinner(f"Scanning eBay marketplace for '{search_query}'..."):
+            results, err = search_ebay_market(
+                keyword=search_query,
+                marketplace_id=market_id,
+                limit=50,
+                sort_order=active_sort,
+                condition_filter=cond_choice
+            )
+
+        if err:
+            st.error(f"Failed to fetch market data: {err}")
+        elif results and "itemSummaries" in results:
+            items = results.get("itemSummaries", [])
+            total_found = results.get("total", len(items))
+
+            prices = []
+            hunting_data = []
+
+            for it in items:
+                title = it.get("title", "N/A")
+                price_obj = it.get("price", {})
+                item_price = float(price_obj.get("value", 0.0))
+                currency = price_obj.get("currency", "USD")
+                prices.append(item_price)
+
+                shipping_cost = 0.0
+                for ship in it.get("shippingOptions", []):
+                    cost_val = ship.get("shippingCost", {}).get("value")
+                    if cost_val:
+                        shipping_cost = float(cost_val)
+                        break
+
+                condition = it.get("condition", "N/A")
+                seller = it.get("seller", {}).get("username", "N/A")
+                feedback = it.get("seller", {}).get("feedbackPercentage", "N/A")
+                item_url = it.get("itemWebUrl", "#")
+
+                hunting_data.append({
+                    "Product Title": title,
+                    "Price": item_price,
+                    "Shipping Cost": shipping_cost,
+                    "Total Landed Price": round(item_price + shipping_cost, 2),
+                    "Currency": currency,
+                    "Condition": condition,
+                    "Seller": seller,
+                    "Feedback %": f"{feedback}%",
+                    "Item Link": item_url
+                })
+
+            df_hunt = pd.DataFrame(hunting_data)
+
+            avg_price = (sum(prices) / len(prices)) if prices else 0.0
+            min_price = min(prices) if prices else 0.0
+            max_price = max(prices) if prices else 0.0
+            primary_curr = df_hunt["Currency"].iloc[0] if not df_hunt.empty else "USD"
+
+            st.divider()
+            st.markdown(f"### 📊 Market Intelligence for `{search_query}`")
+
+            # --- HUNTING KPI METRICS ---
+            hk1, hk2, hk3, hk4 = st.columns(4)
+            hk1.metric("Average Price", f"{primary_curr} {avg_price:,.2f}")
+            hk2.metric("Lowest Competitor Price", f"{primary_curr} {min_price:,.2f}")
+            hk3.metric("Highest Price", f"{primary_curr} {max_price:,.2f}")
+            hk4.metric("Active Competitors Analyzed", f"{len(items)} (of {total_found})")
+
+            st.divider()
+
+            # --- EXPORT & TABLE ---
+            c_htitle, c_hdl = st.columns([3, 1])
+            with c_htitle:
+                st.markdown("#### 🏆 Competitor Listings & Price Analysis")
+            with c_hdl:
+                hunt_csv = io.StringIO()
+                df_hunt.to_csv(hunt_csv, index=False)
+                st.download_button(
+                    label="📥 Export Hunting Report (CSV)",
+                    data=hunt_csv.getvalue(),
+                    file_name=f"eBay_Hunting_{search_query.replace(' ', '_')}_{datetime.now().strftime('%Y%m%d')}.csv",
+                    mime="text/csv",
+                    use_container_width=True,
+                    type="primary"
+                )
+
+            st.dataframe(
+                df_hunt,
+                column_config={
+                    "Item Link": st.column_config.LinkColumn("View on eBay")
+                },
+                use_container_width=True,
+                hide_index=True,
+            )
+        else:
+            st.warning("No listings found matching your search keyword and filters.")
+
+# ==========================================================
+# PAGE D: LINK & MANAGE STORES
 # ==========================================================
 elif (
     "Connect My eBay Store" in selected_page
@@ -1209,7 +1393,7 @@ elif (
                         st.rerun()
 
 # ==========================================================
-# PAGE D: REGISTERED CLIENTS OVERVIEW (ADMIN ONLY)
+# PAGE E: REGISTERED CLIENTS OVERVIEW (ADMIN ONLY)
 # ==========================================================
 elif (
     selected_page == "Registered Clients Overview"
@@ -1258,7 +1442,7 @@ elif (
                     st.rerun()
 
 # ==========================================================
-# PAGE E: MESSAGE TEMPLATES (CLIENT & ADMIN)
+# PAGE F: MESSAGE TEMPLATES (CLIENT & ADMIN)
 # ==========================================================
 elif "Message Templates" in selected_page:
     st.markdown("## 📝 Message Templates Settings")
