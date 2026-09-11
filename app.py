@@ -1310,7 +1310,7 @@ if "Orders &" in selected_page:
                         st.write(f"**Item ID:** `{item_id}`")
                         st.write(f"**Carrier:** `{carrier_name}`")
                         st.write(f"**Tracking:** `{tracking_num}`")
-                        st.markdown(f"**📋 1-Click Extension Data (Copy & Paste in Extension):**")
+                        st.markdown(f"**📋 Copy this JSON snippet for 1-click fill:**")
                         st.code(json_snippet, language="json")
 
                     with c_act:
@@ -1945,7 +1945,7 @@ elif "Download Chrome Extension" in selected_page:
         ext_manifest = json.dumps({
             "manifest_version": 3,
             "name": "eBay React Checkout Autofill",
-            "version": "4.0",
+            "version": "4.1",
             "description": "Fulfill AliExpress and supplier orders seamlessly.",
             "permissions": ["storage", "activeTab", "scripting"],
             "host_permissions": ["https://*.aliexpress.com/*", "https://*.cjdropshipping.com/*", "https://*.amazon.com/*"],
@@ -1977,7 +1977,6 @@ elif "Download Chrome Extension" in selected_page:
                 element.dispatchEvent(new KeyboardEvent('keyup', { bubbles: true }));
               };
 
-              // Comprehensive query selectors covering AliExpress React checkout inputs
               const nameInput = document.querySelector('input[name="contactName"], input[id*="contactName"], input[placeholder*="Contact Name"], input[placeholder*="Name"]');
               const phoneInput = document.querySelector('input[name="mobileNo"], input[id*="mobileNo"], input[placeholder*="Phone"], input[type="tel"]');
               const streetInput = document.querySelector('input[name="address"], textarea[placeholder*="Street"], input[placeholder*="Address"], textarea[id*="address"]');
