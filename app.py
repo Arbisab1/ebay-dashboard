@@ -1020,7 +1020,10 @@ if "Orders &" in selected_page:
         tokens = accessible_stores[active_store_name]
 
         st.divider()
-        st.markdown("#### 🔄 Sync Orders from eBay")
+        st.markdown("#### 🔄 Sync Orders & Auto-Messaging Settings")
+        
+        # Auto vs Manual Toggle Mode
+        auto_mode_toggle = st.toggle("⚡ Enable Automatic Welcome Messaging (Auto-Pilot on Sync)", value=True, key="auto_messaging_mode_toggle")
         
         fetch_all_orders_toggle = st.checkbox("📋 Fetch ALL Orders (No Date Limit)", value=False, key="all_orders_toggle")
         
@@ -1048,8 +1051,8 @@ if "Orders &" in selected_page:
         with col_sync_btn:
             st.write("")
             manual_sync = st.button(
-                f"🔄 Force Refresh",
-                type="secondary",
+                f"🔄 Force Refresh & Sync",
+                type="primary",
                 use_container_width=True,
                 key="manual_sync_btn"
             )
@@ -1079,6 +1082,43 @@ if "Orders &" in selected_page:
                         st.session_state[f"orders_{active_store_name}"] = fetched_orders
                         st.session_state[f"last_hash_{active_store_name}"] = current_filter_hash
                         orders = fetched_orders
+                        
+                        # --- AUTOMATIC BACKGROUND AUTO-MESSAGING TRIGGER ---
+                        if auto_mode_toggle and orders:
+                            auto_sent_count = 0
+                            welcome_tpl_key = "Brand New Order Welcome"
+                            for o in orders:
+                                order_id = o.get("orderId", "")
+                                buyer = o.get("buyer", {}).get("username", "Buyer")
+                                line_items = o.get("lineItems", [])
+                                item_id = line_items[0].get("legacyItemId") if line_items else None
+                                
+                                log_key = f"{order_id}_{welcome_tpl_key}"
+                                order_type, _ = get_clean_order_status(o)
+                                
+                                # Send automatically only if it's a NEW unfulfilled order and not already messaged
+                                if order_type == "NEW" and log_key not in logs and item_id:
+                                    try:
+                                        msg_body = templates[welcome_tpl_key].format(
+                                            buyer=buyer,
+                                            order_id=order_id,
+                                            tracking_number="Pending",
+                                            carrier="Standard"
+                                        )
+                                        success = send_ebay_message(access_token, item_id, buyer, msg_body)
+                                        if success:
+                                            auto_sent_count += 1
+                                            logs[log_key] = {
+                                                "buyer": buyer,
+                                                "status": "Auto-Sent",
+                                                "time": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                                            }
+                                    except Exception:
+                                        pass
+                            if auto_sent_count > 0:
+                                save_json(LOGS_FILE, logs)
+                                st.success(f"⚡ Auto-Pilot: Sent welcome message to {auto_sent_count} new orders automatically!")
+                        
                         st.success(f"Synced {len(fetched_orders)} orders!")
                     except Exception as e:
                         st.error(f"Failed to fetch orders: {str(e)}")
@@ -1147,7 +1187,7 @@ if "Orders &" in selected_page:
             st.write("")
 
             if st.button(
-                f"🚀 Send '{chosen_template}' to All ({len(display_orders)}) Matched Orders",
+                f"🚀 Send '{chosen_template}' to All ({len(display_orders)}) Matched Orders (Manual)",
                 type="primary",
                 key="bulk_send_btn"
             ):
@@ -1177,33 +1217,37 @@ if "Orders &" in selected_page:
                         if carrier_info:
                             carrier_name = carrier_info
 
-                    try:
-                        msg_body = templates[chosen_template].format(
-                            buyer=buyer,
-                            order_id=order_id,
-                            tracking_number=tracking_num,
-                            carrier=carrier_name,
-                        )
-
-                        if item_id:
-                            success = send_ebay_message(
-                                access_token, item_id, buyer, msg_body
+                    log_key = f"{order_id}_{chosen_template}"
+                    
+                    # Prevent duplicate manual sending if already logged
+                    if log_key not in logs:
+                        try:
+                            msg_body = templates[chosen_template].format(
+                                buyer=buyer,
+                                order_id=order_id,
+                                tracking_number=tracking_num,
+                                carrier=carrier_name,
                             )
-                            if success:
-                                sent_count += 1
-                                logs[f"{order_id}_{chosen_template}"] = {
-                                    "buyer": buyer,
-                                    "status": "Sent",
-                                    "time": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                                }
-                    except Exception:
-                        pass
+
+                            if item_id:
+                                success = send_ebay_message(
+                                    access_token, item_id, buyer, msg_body
+                                )
+                                if success:
+                                    sent_count += 1
+                                    logs[log_key] = {
+                                        "buyer": buyer,
+                                        "status": "Sent",
+                                        "time": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                                    }
+                        except Exception:
+                            pass
 
                     time.sleep(0.3)
                     progress_bar.progress((i + 1) / len(display_orders))
 
                 save_json(LOGS_FILE, logs)
-                st.success(f"✅ {sent_count}/{len(display_orders)} messages dispatched!")
+                st.success(f"✅ {sent_count} new messages dispatched! (Already messaged orders were safely skipped).")
                 time.sleep(1)
                 st.rerun()
 
@@ -1245,7 +1289,7 @@ if "Orders &" in selected_page:
                 is_sent = log_key in logs
 
                 with st.expander(
-                    f"Order #{order_id} | Buyer: {buyer} | {clean_badge} | {'✅ Sent' if is_sent else '⏳ Ready'}"
+                    f"Order #{order_id} | Buyer: {buyer} | {clean_badge} | {'✅ Sent' : '⏳ Ready' if log_key not in logs else '✅ Sent'}"
                 ):
                     c_det, c_act = st.columns([1.5, 2])
                     with c_det:
@@ -1253,6 +1297,8 @@ if "Orders &" in selected_page:
                         st.write(f"**Item ID:** `{item_id}`")
                         st.write(f"**Carrier:** `{carrier_name}`")
                         st.write(f"**Tracking:** `{tracking_num}`")
+                        if log_key in logs:
+                            st.success(f"Status: Already Sent ({logs[log_key].get('time', '')})")
 
                     with c_act:
                         user_msg_input = st.text_area(
@@ -1793,7 +1839,6 @@ elif selected_page == "💰 eBay Fees & Profit Calculator":
     with calc_c1:
         st.markdown("#### 📥 Pricing & Category Inputs")
         
-        # Country / Marketplace Selector
         country_choice = st.selectbox(
             "Select Target Marketplace / Country:",
             ["🇺🇸 United States (USD)", "🇬🇧 United Kingdom (GBP)", "🇦🇺 Australia (AUD)", "🇩🇪 Germany / Europe (EUR)"],
@@ -1809,7 +1854,6 @@ elif selected_page == "💰 eBay Fees & Profit Calculator":
         else:
             currency_symbol = "€"
 
-        # Category Selector with automatic percentage assignment
         category_choice = st.selectbox(
             "Select Item Category:",
             [
@@ -1837,7 +1881,6 @@ elif selected_page == "💰 eBay Fees & Profit Calculator":
     with calc_c2:
         st.markdown("#### 📊 Financial Breakdown & Margins")
         
-        # Auto-calculated eBay fee based on selected category percentage + fixed order fee ($0.30)
         calculated_ebay_fee = (selling_price * (default_fee_pct / 100.0)) + 0.30
         calculated_ad_fee = selling_price * (ad_rate_pct / 100.0)
         total_expenses = item_cost + shipping_cost + calculated_ebay_fee + calculated_ad_fee
