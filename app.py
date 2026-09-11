@@ -1285,7 +1285,7 @@ if "Orders &" in selected_page:
                                     st.error("Failed to send message via eBay WS API.")
 
         elif orders is not None:
-             st.info("No orders found for the selected store and date range.")
+            st.info("No orders found for the selected store and date range.")
 
 # ==========================================================
 # 2. PRODUCT HUNTING & RESEARCH
@@ -1336,8 +1336,6 @@ elif selected_page == "🔍 Product Hunting & Research":
             st.error(f"Failed to fetch market data: {err}")
         elif results and "itemSummaries" in results:
             items = results.get("itemSummaries", [])
-            total_found = results.get("total", len(items))
-
             prices = []
             hunting_data = []
 
@@ -1395,7 +1393,6 @@ elif selected_page == "🔍 Product Hunting & Research":
                 })
 
             df_hunt_raw = pd.DataFrame(hunting_data)
-
             avg_price = (sum(prices) / len(prices)) if prices else 0.0
             primary_curr = df_hunt_raw["Currency"].iloc[0] if not df_hunt_raw.empty else "USD"
 
