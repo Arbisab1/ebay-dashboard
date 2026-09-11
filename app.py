@@ -182,8 +182,8 @@ whatsapp_html_snippet = (
     + WHATSAPP_LINK
     + '" target="_blank" class="floating-whatsapp">'
     '<img src="https://upload.wikimedia.org/wikipedia/commons/6/6b/WhatsApp.svg" width="24" height="24" alt="WhatsApp">'
-    "<span>Need Help? Chat with us</span>"
-    "</a>"
+    '<span>Need Help? Chat with us</span>'
+    '</a>'
 )
 st.markdown(whatsapp_html_snippet, unsafe_allow_html=True)
 
@@ -219,6 +219,7 @@ ALL_MODULES = [
     "Product Hunting & Research",
     "Listing Violations & Policy",
     "Sales & Revenue Reports",
+    "💰 eBay Fees & Profit Calculator",
     "Connect eBay Store"
 ]
 
@@ -955,6 +956,9 @@ with st.sidebar:
 
     if "Sales & Revenue Reports" in user_modules or st.session_state.role == "admin":
         nav_options.append("📈 Sales & Revenue Reports")
+
+    if "💰 eBay Fees & Profit Calculator" in user_modules or st.session_state.role == "admin":
+        nav_options.append("💰 eBay Fees & Profit Calculator")
 
     if "Connect eBay Store" in user_modules or st.session_state.role == "admin":
         nav_options.append("➕ Link & Manage eBay Stores" if st.session_state.role == "admin" else "➕ Connect My eBay Store")
@@ -1771,6 +1775,61 @@ elif selected_page == "📈 Sales & Revenue Reports":
             st.info("No sales records found for this period. Click '🔄 Sync Sales Data' to fetch.")
 
 # ==========================================================
+# 4.5 EBAY FEES & PROFIT CALCULATOR
+# ==========================================================
+elif selected_page == "💰 eBay Fees & Profit Calculator":
+    st.markdown(
+        """
+    <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 8px;">
+        <img src="https://upload.wikimedia.org/wikipedia/commons/1/1b/EBay_logo.svg" width="75">
+        <h2 style="margin: 0; color: #0F172A; font-weight: 700;">eBay Fees & Profit Calculator</h2>
+    </div>
+    """,
+        unsafe_allow_html=True,
+    )
+    st.caption("Calculate exact eBay final value fees, shipping expenses, and net profit margins instantly.")
+
+    calc_c1, calc_c2 = st.columns(2)
+    with calc_c1:
+        st.markdown("#### 📥 Cost & Pricing Inputs")
+        selling_price = st.number_input("Target Selling Price ($):", min_value=0.0, value=49.99, step=1.0)
+        item_cost = st.number_input("Item Sourcing Cost ($):", min_value=0.0, value=15.00, step=1.0)
+        shipping_cost = st.number_input("Shipping Cost to Buyer ($):", min_value=0.0, value=4.50, step=0.50)
+        ebay_fee_pct = st.number_input("eBay Final Value Fee (%):", min_value=0.0, max_value=30.0, value=13.25, step=0.25)
+        fixed_order_fee = st.number_input("Fixed Per-Order Fee ($):", min_value=0.0, value=0.30, step=0.05)
+        ad_rate_pct = st.number_input("Promoted Listing Ad Rate (%):", min_value=0.0, max_value=50.0, value=2.0, step=0.5)
+
+    with calc_c2:
+        st.markdown("#### 📊 Financial Breakdown & Margins")
+        
+        calculated_ebay_fee = (selling_price * (ebay_fee_pct / 100.0)) + fixed_order_fee
+        calculated_ad_fee = selling_price * (ad_rate_pct / 100.0)
+        total_expenses = item_cost + shipping_cost + calculated_ebay_fee + calculated_ad_fee
+        net_profit = selling_price - total_expenses
+        net_margin = (net_profit / selling_price * 100.0) if selling_price > 0 else 0.0
+
+        st.write("")
+        mc1, mc2 = st.columns(2)
+        mc1.metric("Net Profit", f"${net_profit:,.2f}")
+        mc2.metric("Net Profit Margin", f"{net_margin:.1f}%")
+
+        st.write("")
+        st.markdown(
+            f"""
+        <div style="background: #FFFFFF; border: 1px solid #CBD5E1; border-radius: 10px; padding: 16px;">
+            <p style="margin: 4px 0;"><b>Selling Price:</b> ${selling_price:,.2f}</p>
+            <p style="margin: 4px 0;"><b>Sourcing Cost:</b> -${item_cost:,.2f}</p>
+            <p style="margin: 4px 0;"><b>Shipping Expense:</b> -${shipping_cost:,.2f}</p>
+            <p style="margin: 4px 0;"><b>eBay Final Value Fee:</b> -${calculated_ebay_fee:,.2f}</p>
+            <p style="margin: 4px 0;"><b>Promoted Ads Fee:</b> -${calculated_ad_fee:,.2f}</p>
+            <hr style="margin: 8px 0; border-color: #E2E8F0;">
+            <p style="margin: 4px 0; font-size: 1.05rem;"><b>Total Expenses:</b> ${total_expenses:,.2f}</p>
+        </div>
+        """,
+            unsafe_allow_html=True,
+        )
+
+# ==========================================================
 # 5. LINK & MANAGE STORES
 # ==========================================================
 elif (
@@ -1930,6 +1989,8 @@ elif (
                     with col_m2:
                         if st.checkbox("📈 Sales & Revenue Reports", value=("Sales & Revenue Reports" in curr_allowed), key=f"chk_sales_{u}"):
                             new_selected_modules.append("Sales & Revenue Reports")
+                        if st.checkbox("💰 eBay Fees & Profit Calculator", value=("💰 eBay Fees & Profit Calculator" in curr_allowed), key=f"chk_calc_{u}"):
+                            new_selected_modules.append("💰 eBay Fees & Profit Calculator")
                         if st.checkbox("➕ Connect eBay Store", value=("Connect eBay Store" in curr_allowed), key=f"chk_store_{u}"):
                             new_selected_modules.append("Connect eBay Store")
 
