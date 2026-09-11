@@ -32,7 +32,6 @@ RUNAME = st.secrets.get(
     os.getenv("EBAY_RUNAME", "Nawaz_Iqbal-NawazIqb-eBayAu-pifoqzze"),
 )
 
-# --- CONFIGURED SMTP CREDENTIALS ---
 HARDCODED_GMAIL = "Nawazarbi69@gmail.com"
 HARDCODED_APP_PASSWORD = "lxkotbrfjmaozlnc"
 
@@ -61,7 +60,7 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-# --- THEME: CYBERNETIC GLOBAL TRADE NODE BACKGROUND ---
+# --- AUTO ADAPTIVE CONTRAST & THEME STYLING ---
 st.markdown(
     f"""
 <style>
@@ -69,6 +68,7 @@ st.markdown(
         display: none !important;
     }}
 
+    /* Background with Cybernetic Node Map overlay */
     html, body, .stApp {{
         background: linear-gradient(rgba(10, 25, 47, 0.88), rgba(15, 23, 42, 0.92)),
                     url("https://images.unsplash.com/photo-1451187580459-43490279c0fa?auto=format&fit=crop&w=1920&q=80") no-repeat center center fixed !important;
@@ -81,11 +81,19 @@ st.markdown(
         padding-bottom: 2.5rem !important;
     }}
 
-    div[data-testid="stMetric"], .stExpander, div[data-testid="stForm"] {{
+    /* Enforce Dark Text Inside Containers & Forms for Absolute Readability */
+    div[data-testid="stMetric"], .stExpander, div[data-testid="stForm"], div.row-widget.stRadio {{
         background-color: rgba(255, 255, 255, 0.96) !important;
         border: 1px solid #CBD5E1 !important;
         border-radius: 12px !important;
         box-shadow: 0 4px 20px rgba(0, 0, 0, 0.25) !important;
+    }}
+
+    /* Ensure all text inside containers, labels, and forms is dark and clear */
+    div[data-testid="stForm"] p, div[data-testid="stForm"] label, div[data-testid="stForm"] span, 
+    .stExpander p, .stExpander span, .stExpander label {{
+        color: #0F172A !important;
+        font-weight: 500 !important;
     }}
 
     div[data-testid="stMetric"] {{
@@ -101,6 +109,7 @@ st.markdown(
         font-weight: 600 !important;
     }}
 
+    /* Primary Buttons */
     button[kind="primary"] {{
         background: linear-gradient(135deg, #2563EB, #1D4ED8) !important;
         color: #FFFFFF !important;
@@ -113,6 +122,7 @@ st.markdown(
         color: #FFFFFF !important;
     }}
 
+    /* Secondary Buttons */
     button[kind="secondary"] {{
         background-color: #FFFFFF !important;
         border: 1px solid #94A3B8 !important;
@@ -124,17 +134,23 @@ st.markdown(
         color: #1E293B !important;
     }}
 
+    /* Input Fields & Text Boxes */
     input, textarea, select, div[data-baseweb="select"] {{
         background-color: #FFFFFF !important;
         color: #0F172A !important;
         border-color: #94A3B8 !important;
         border-radius: 8px !important;
+        font-weight: 500 !important;
+    }}
+    input::placeholder {{
+        color: #64748B !important;
     }}
     div[data-baseweb="select"] * {{
         color: #0F172A !important;
         background-color: #FFFFFF !important;
     }}
 
+    /* Clean Sidebar */
     section[data-testid="stSidebar"] {{
         background-color: rgba(255, 255, 255, 0.97) !important;
         border-right: 1px solid #E2E8F0 !important;
