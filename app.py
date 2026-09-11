@@ -1910,7 +1910,7 @@ elif (
                         st.rerun()
 
 # ==========================================================
-# 5.5 CHROME EXTENSION DOWNLOAD HUB (CSP COMPLIANT)
+# 5.5 CHROME EXTENSION DOWNLOAD HUB (ABSOLUTE URL FIXED)
 # ==========================================================
 elif "Download Chrome Extension" in selected_page:
     st.markdown("## 🧩 Auto-Fulfillment Chrome Extension Hub")
@@ -1929,13 +1929,17 @@ elif "Download Chrome Extension" in selected_page:
         6. On any supplier checkout page (AliExpress, CJ Dropshipping, etc.), click the extension icon, enter your **eBay Order ID**, and click **Sync & Auto-Fill**!
         """)
         
+        # Capture current active production streamlit URL dynamically
+        current_portal_url = st.query_params.get("portal_url", "https://ebayauto-portal.streamlit.app")
+        portal_domain_input = st.text_input("Enter your Live Streamlit App URL:", value="https://ebayauto-portal.streamlit.app", key="portal_domain_box")
+
         ext_manifest = json.dumps({
             "manifest_version": 3,
             "name": "eBay Direct Order Autofill",
-            "version": "2.1",
+            "version": "2.2",
             "description": "Fetch buyer address via eBay Order ID and auto-fill checkout pages.",
             "permissions": ["storage", "activeTab", "scripting", "tabs"],
-            "host_permissions": ["https://*.aliexpress.com/*", "https://*.cjdropshipping.com/*", "https://*.amazon.com/*", "https://*.streamlit.app/*"],
+            "host_permissions": ["https://*.aliexpress.com/*", "https://*.cjdropshipping.com/*", "https://*.amazon.com/*", "https://*.streamlit.app/*", "http://localhost:*/*"],
             "action": {"default_popup": "popup.html"},
             "content_scripts": [{
                 "matches": ["https://*.aliexpress.com/*", "https://*.cjdropshipping.com/*", "https://*.amazon.com/*"],
@@ -1998,16 +2002,19 @@ elif "Download Chrome Extension" in selected_page:
 </body>
 </html>"""
 
-        ext_popup_js = """
+        ext_popup_js = f"""
+        const PORTAL_URL = "{portal_domain_input.strip()}";
+
         document.getElementById('btnSyncFill').addEventListener('click', async () => {
           const oid = document.getElementById('orderIdInput').value.trim();
-          if(!oid) { alert("Please enter a valid Order ID"); return; }
-          document.getElementById('lblStatus').innerText = "Fetching from eBay API...";
+          if(!oid) {{ alert("Please enter a valid Order ID"); return; }}
+          document.getElementById('lblStatus').innerText = "Fetching from Portal API...";
           
           try {
-            const portalBase = window.location.origin;
-            const res = await fetch(portalBase + "/?api_order_id=" + oid);
+            const fetchUrl = PORTAL_URL.endsWith('/') ? PORTAL_URL + "?api_order_id=" + oid : PORTAL_URL + "/?api_order_id=" + oid;
+            const res = await fetch(fetchUrl);
             const orderData = await res.json();
+            
             if(orderData.error) {
               document.getElementById('lblStatus').innerText = "Error: Order not found";
               return;
