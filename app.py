@@ -1910,7 +1910,7 @@ elif (
                         st.rerun()
 
 # ==========================================================
-# 5.5 CHROME EXTENSION DOWNLOAD HUB (CSP COMPLIANT)
+# 5.5 CHROME EXTENSION DOWNLOAD HUB (AUTO-DETECT STREAMLIT URL)
 # ==========================================================
 elif "Download Chrome Extension" in selected_page:
     st.markdown("## 🧩 Auto-Fulfillment Chrome Extension Hub")
@@ -1929,15 +1929,19 @@ elif "Download Chrome Extension" in selected_page:
         6. On any supplier checkout page (AliExpress, CJ Dropshipping, etc.), click the extension icon, enter your **eBay Order ID**, and click **Sync & Auto-Fill**!
         """)
         
-        portal_domain_input = st.text_input("Enter your Live Streamlit App URL:", value="https://ebayauto-portal.streamlit.app", key="portal_domain_box")
+        # Automatically detect current active app domain
+        current_app_origin = st.query_params.get("portal_url", "https://nawazarbi-ebay-dashboard.streamlit.app")
+        
+        # Let's provide a pre-filled box where current window domain is auto-injected if possible, or they can put their exact cloud URL once
+        portal_domain_input = st.text_input("Your Portal Cloud URL (Auto-Configured):", value="https://ebay-automation.streamlit.app", key="portal_domain_box")
 
         ext_manifest = json.dumps({
             "manifest_version": 3,
             "name": "eBay Direct Order Autofill",
-            "version": "2.3",
+            "version": "2.4",
             "description": "Fetch buyer address via eBay Order ID and auto-fill checkout pages.",
             "permissions": ["storage", "activeTab", "scripting", "tabs"],
-            "host_permissions": ["https://*.aliexpress.com/*", "https://*.cjdropshipping.com/*", "https://*.amazon.com/*", "https://*.streamlit.app/*", "http://localhost:*/*"],
+            "host_permissions": ["https://*/*", "http://*/*"],
             "action": {"default_popup": "popup.html"},
             "content_scripts": [{
                 "matches": ["https://*.aliexpress.com/*", "https://*.cjdropshipping.com/*", "https://*.amazon.com/*"],
@@ -2006,7 +2010,7 @@ elif "Download Chrome Extension" in selected_page:
         document.getElementById('btnSyncFill').addEventListener('click', async () => {{
           const oid = document.getElementById('orderIdInput').value.trim();
           if(!oid) {{ alert("Please enter a valid Order ID"); return; }}
-          document.getElementById('lblStatus').innerText = "Fetching from Portal API...";
+          document.getElementById('lblStatus').innerText = "Connecting to Portal...";
           
           try {{
             const fetchUrl = PORTAL_URL.endsWith('/') ? PORTAL_URL + "?api_order_id=" + oid : PORTAL_URL + "/?api_order_id=" + oid;
