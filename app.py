@@ -1310,7 +1310,7 @@ if "Orders &" in selected_page:
                         st.write(f"**Item ID:** `{item_id}`")
                         st.write(f"**Carrier:** `{carrier_name}`")
                         st.write(f"**Tracking:** `{tracking_num}`")
-                        st.markdown(f"**📋 Copy this JSON snippet for 1-click fill:**")
+                        st.markdown(f"**📋 Copy Order Snippet:**")
                         st.code(json_snippet, language="json")
 
                     with c_act:
