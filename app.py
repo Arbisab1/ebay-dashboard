@@ -33,7 +33,7 @@ RUNAME = st.secrets.get(
 )
 
 HARDCODED_GMAIL = "ebayautomationtool@gmail.com"
-HARDCODED_APP_PASSWORD = "lxkotbrfjmaozlnc"
+HARDCODED_APP_PASSWORD = "vmxc wwbs nuzz yhbc"
 
 SMTP_EMAIL = st.secrets.get("SMTP_EMAIL", os.getenv("SMTP_EMAIL", HARDCODED_GMAIL)).strip()
 SMTP_PASSWORD = st.secrets.get("SMTP_PASSWORD", os.getenv("SMTP_PASSWORD", HARDCODED_APP_PASSWORD)).strip()
