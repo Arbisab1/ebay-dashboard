@@ -60,7 +60,7 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-# --- AUTO ADAPTIVE CONTRAST & THEME STYLING ---
+# --- STRICT HIGH-CONTRAST READABILITY STYLING ---
 st.markdown(
     f"""
 <style>
@@ -68,12 +68,13 @@ st.markdown(
         display: none !important;
     }}
 
-    /* Background with Cybernetic Node Map overlay */
+    /* Global Dark Cybernetic Background */
     html, body, .stApp {{
-        background: linear-gradient(rgba(10, 25, 47, 0.88), rgba(15, 23, 42, 0.92)),
+        background: linear-gradient(rgba(10, 25, 47, 0.90), rgba(15, 23, 42, 0.94)),
                     url("https://images.unsplash.com/photo-1451187580459-43490279c0fa?auto=format&fit=crop&w=1920&q=80") no-repeat center center fixed !important;
         background-size: cover !important;
         font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif !important;
+        color: #F8FAFC !important;
     }}
 
     .block-container {{
@@ -81,19 +82,27 @@ st.markdown(
         padding-bottom: 2.5rem !important;
     }}
 
-    /* Enforce Dark Text Inside Containers & Forms for Absolute Readability */
-    div[data-testid="stMetric"], .stExpander, div[data-testid="stForm"], div.row-widget.stRadio {{
-        background-color: rgba(255, 255, 255, 0.96) !important;
-        border: 1px solid #CBD5E1 !important;
-        border-radius: 12px !important;
-        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.25) !important;
+    /* All Headings, Paragraphs, and Labels in Main Content Area */
+    .block-container h1, .block-container h2, .block-container h3, 
+    .block-container h4, .block-container h5, .block-container h6, 
+    .block-container p, .block-container span, .block-container label {{
+        color: #FFFFFF !important;
+        text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5) !important;
     }}
 
-    /* Ensure all text inside containers, labels, and forms is dark and clear */
+    /* Containers, Metrics, Expanders & Forms with Solid High-Contrast Backgrounds */
+    div[data-testid="stMetric"], .stExpander, div[data-testid="stForm"], div.row-widget.stRadio {{
+        background-color: #FFFFFF !important;
+        border: 1px solid #CBD5E1 !important;
+        border-radius: 12px !important;
+        box-shadow: 0 8px 30px rgba(0, 0, 0, 0.35) !important;
+    }}
+
+    /* Text inside forms and expanders must be pitch black for readability */
     div[data-testid="stForm"] p, div[data-testid="stForm"] label, div[data-testid="stForm"] span, 
-    .stExpander p, .stExpander span, .stExpander label {{
+    .stExpander p, .stExpander span, .stExpander label, .stExpander div {{
         color: #0F172A !important;
-        font-weight: 500 !important;
+        text-shadow: none !important;
     }}
 
     div[data-testid="stMetric"] {{
@@ -102,10 +111,10 @@ st.markdown(
     div[data-testid="stMetricValue"] {{
         font-size: 1.85rem !important;
         font-weight: 700 !important;
-        color: #1E40AF !important;
+        color: #2563EB !important;
     }}
     div[data-testid="stMetricLabel"] p {{
-        color: #334155 !important;
+        color: #475569 !important;
         font-weight: 600 !important;
     }}
 
@@ -120,6 +129,7 @@ st.markdown(
     }}
     button[kind="primary"] p {{
         color: #FFFFFF !important;
+        text-shadow: none !important;
     }}
 
     /* Secondary Buttons */
@@ -132,9 +142,10 @@ st.markdown(
     }}
     button[kind="secondary"] p {{
         color: #1E293B !important;
+        text-shadow: none !important;
     }}
 
-    /* Input Fields & Text Boxes */
+    /* Input Fields & Dropdowns */
     input, textarea, select, div[data-baseweb="select"] {{
         background-color: #FFFFFF !important;
         color: #0F172A !important;
@@ -150,13 +161,14 @@ st.markdown(
         background-color: #FFFFFF !important;
     }}
 
-    /* Clean Sidebar */
+    /* Sidebar Styling */
     section[data-testid="stSidebar"] {{
-        background-color: rgba(255, 255, 255, 0.97) !important;
+        background-color: #FFFFFF !important;
         border-right: 1px solid #E2E8F0 !important;
     }}
     section[data-testid="stSidebar"] * {{
         color: #0F172A !important;
+        text-shadow: none !important;
     }}
 
     .floating-whatsapp {{
