@@ -333,37 +333,6 @@ def get_app_access_token():
         return res.json().get("access_token")
     return None
 
-def fetch_ebay_item_by_url(url_input):
-    """Fetches eBay item details (title, price) using Browse API given an item URL or ID."""
-    token = get_app_access_token()
-    if not token:
-        return None, "API Token not available."
-    
-    item_id = None
-    match = re.search(r'/itm/(\d+)', url_input)
-    if match:
-        item_id = match.group(1)
-    elif url_input.isdigit():
-        item_id = url_input.strip()
-
-    if not item_id:
-        return None, "Invalid eBay Item URL or ID."
-
-    headers = {
-        "Authorization": f"Bearer {token}",
-        "X-EBAY-C-MARKETPLACE-ID": "EBAY_US",
-        "Content-Type": "application/json",
-    }
-    res = requests.get(f"https://api.ebay.com/buy/browse/v1/item/v1_item?item_id=v1|{item_id}|0", headers=headers)
-    if res.status_code == 200:
-        data = res.json()
-        title = data.get("title", "")
-        price_val = float(data.get("price", {}).get("value", 0.0))
-        currency = data.get("price", {}).get("currency", "USD")
-        return {"title": title, "price": price_val, "currency": currency}, None
-    else:
-        return None, f"Could not fetch item (Error {res.status_code}). Ensure it's a valid public US listing."
-
 @st.cache_data(show_spinner=False, ttl=3600)
 def fetch_all_ebay_orders_cached(access_token, date_filter_str):
     headers = {
@@ -1806,7 +1775,7 @@ elif selected_page == "📈 Sales & Revenue Reports":
             st.info("No sales records found for this period. Click '🔄 Sync Sales Data' to fetch.")
 
 # ==========================================================
-# 4.5 EBAY FEES & PROFIT CALCULATOR (LINK FETCHER, MANUAL FEES, COUNTRY)
+# 4.5 EBAY FEES & PROFIT CALCULATOR (COUNTRY, CATEGORY & MANUAL EXPENSES)
 # ==========================================================
 elif selected_page == "💰 eBay Fees & Profit Calculator":
     st.markdown(
@@ -1818,26 +1787,13 @@ elif selected_page == "💰 eBay Fees & Profit Calculator":
     """,
         unsafe_allow_html=True,
     )
-    st.caption("Calculate exact net profit margins by importing an eBay item link or manually entering your pricing, shipping, custom fees, and promoted ads.")
-
-    # eBay Link Auto-Fetcher Box
-    with st.expander("🔗 Optional: Import Price & Details from eBay Product Link", expanded=False):
-        fetch_link_input = st.text_input("Paste eBay Item URL or ID:", placeholder="https://www.ebay.com/itm/123456789")
-        if st.button("📥 Fetch Item Details"):
-            if fetch_link_input:
-                fetched_data, fetch_err = fetch_ebay_item_by_url(fetch_link_input)
-                if fetched_data:
-                    st.session_state.calc_fetched_price = fetched_data["price"]
-                    st.success(f"Successfully fetched: **{fetched_data['title']}** (Price: ${fetched_data['price']})")
-                else:
-                    st.error(fetch_err)
-            else:
-                st.warning("Please paste a valid eBay link.")
+    st.caption("Calculate exact net profit margins across international marketplaces by selecting your category and entering your pricing, shipping, and promoted ads.")
 
     calc_c1, calc_c2 = st.columns(2)
     with calc_c1:
-        st.markdown("#### 📥 Pricing & Expense Inputs")
+        st.markdown("#### 📥 Pricing & Category Inputs")
         
+        # Country / Marketplace Selector
         country_choice = st.selectbox(
             "Select Target Marketplace / Country:",
             ["🇺🇸 United States (USD)", "🇬🇧 United Kingdom (GBP)", "🇦🇺 Australia (AUD)", "🇩🇪 Germany / Europe (EUR)"],
@@ -1853,18 +1809,38 @@ elif selected_page == "💰 eBay Fees & Profit Calculator":
         else:
             currency_symbol = "€"
 
-        default_price = st.session_state.get("calc_fetched_price", 49.99)
-        selling_price = st.number_input(f"Target Selling Price ({currency_symbol}):", min_value=0.0, value=float(default_price), step=1.0)
+        # Category Selector with automatic percentage assignment
+        category_choice = st.selectbox(
+            "Select Item Category:",
+            [
+                "Electronics & Computers (~13.25%)",
+                "Clothing, Shoes & Accessories (~15.00%)",
+                "Home & Garden (~13.25%)",
+                "Motors & Vehicle Parts (~12.00%)",
+                "Other General Categories (~13.25%)"
+            ],
+            key="calc_category_select"
+        )
+
+        if "Clothing" in category_choice:
+            default_fee_pct = 15.0
+        elif "Motors" in category_choice:
+            default_fee_pct = 12.0
+        else:
+            default_fee_pct = 13.25
+
+        selling_price = st.number_input(f"Target Selling Price ({currency_symbol}):", min_value=0.0, value=49.99, step=1.0)
         item_cost = st.number_input(f"Item Sourcing Cost ({currency_symbol}):", min_value=0.0, value=15.00, step=1.0)
         shipping_cost = st.number_input(f"Shipping Cost ({currency_symbol}):", min_value=0.0, value=4.50, step=0.50)
-        total_custom_fees = st.number_input(f"Total Custom Fees ({currency_symbol}):", min_value=0.0, value=6.50, step=0.25, help="Enter your total custom or estimated transaction fees.")
         ad_rate_pct = st.number_input("Promoted Listings Ad Rate (%):", min_value=0.0, max_value=50.0, value=2.0, step=0.5)
 
     with calc_c2:
         st.markdown("#### 📊 Financial Breakdown & Margins")
         
+        # Auto-calculated eBay fee based on selected category percentage + fixed order fee ($0.30)
+        calculated_ebay_fee = (selling_price * (default_fee_pct / 100.0)) + 0.30
         calculated_ad_fee = selling_price * (ad_rate_pct / 100.0)
-        total_expenses = item_cost + shipping_cost + total_custom_fees + calculated_ad_fee
+        total_expenses = item_cost + shipping_cost + calculated_ebay_fee + calculated_ad_fee
         net_profit = selling_price - total_expenses
         net_margin = (net_profit / selling_price * 100.0) if selling_price > 0 else 0.0
 
@@ -1878,10 +1854,11 @@ elif selected_page == "💰 eBay Fees & Profit Calculator":
             f"""
         <div style="background: #FFFFFF; border: 1px solid #CBD5E1; border-radius: 10px; padding: 16px;">
             <p style="margin: 4px 0;"><b>Marketplace:</b> {country_choice.split('(')[0]}</p>
+            <p style="margin: 4px 0;"><b>Category:</b> {category_choice.split('(')[0]}</p>
             <p style="margin: 4px 0;"><b>Selling Price:</b> {currency_symbol}{selling_price:,.2f}</p>
             <p style="margin: 4px 0;"><b>Sourcing Cost:</b> -{currency_symbol}{item_cost:,.2f}</p>
             <p style="margin: 4px 0;"><b>Shipping Expense:</b> -{currency_symbol}{shipping_cost:,.2f}</p>
-            <p style="margin: 4px 0;"><b>Total Custom Fees:</b> -{currency_symbol}{total_custom_fees:,.2f}</p>
+            <p style="margin: 4px 0;"><b>Estimated eBay Fee ({default_fee_pct}%):</b> -{currency_symbol}{calculated_ebay_fee:,.2f}</p>
             <p style="margin: 4px 0;"><b>Promoted Ads Fee:</b> -{currency_symbol}{calculated_ad_fee:,.2f}</p>
             <hr style="margin: 8px 0; border-color: #E2E8F0;">
             <p style="margin: 4px 0; font-size: 1.05rem;"><b>Total Expenses:</b> {currency_symbol}{total_expenses:,.2f}</p>
