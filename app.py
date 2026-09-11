@@ -4,6 +4,7 @@ import hashlib
 import io
 import json
 import os
+import re
 import time
 from urllib.parse import parse_qs, unquote, urlparse
 import pandas as pd
@@ -436,7 +437,6 @@ def get_clean_order_status(o):
     else:
         return "NEW", "🆕 New Order"
 
-# --- COMPLIANCE & VIOLATION API CALL ---
 def fetch_ebay_compliance_violations(access_token, marketplace_id="EBAY_US"):
     compliance_types = [
         "OUT_OF_STOCK",
@@ -468,7 +468,54 @@ def fetch_ebay_compliance_violations(access_token, marketplace_id="EBAY_US"):
 
     return all_violations
 
-# --- PRODUCT HUNTING BROWSE API CALL ---
+# --- ADVANCED COMPETITOR POLICY AUDIT ENGINE ---
+SPAM_TERMS = [
+    "free shipping", "l@@k", "wow", "must see", "best price", "authentic",
+    "genuine", "top rated", "brand new sealed", "rare", "hot", "fast ship"
+]
+
+def audit_competitor_listing(title, price, seller_feedback_pct, image_url):
+    violations = []
+    title_lower = title.lower()
+
+    # Rule 1: Title Keyword Stuffing & Search Manipulation
+    spam_detected = [term for term in SPAM_TERMS if term in title_lower]
+    if spam_detected:
+        violations.append(f"Keyword Spam: Contains banned non-descriptive terms ({', '.join(spam_detected)})")
+
+    # Rule 2: Title Character Length & Formatting
+    if len(title) > 80:
+        violations.append(f"Title Length Exceeded: {len(title)}/80 characters")
+    
+    words = title.split()
+    if len(words) > 4:
+        caps_words = [w for w in words if w.isupper() and len(w) > 2]
+        if len(caps_words) >= 4:
+            violations.append("Excessive Capitalization in Title (Spam Policy)")
+
+    # Rule 3: Suspicious Low Feedback Seller
+    try:
+        fb_float = float(str(seller_feedback_pct).replace("%", "").strip())
+        if fb_float < 95.0 and fb_float > 0.0:
+            violations.append(f"Seller Health Warning: Low positive feedback ({fb_float}%)")
+    except Exception:
+        pass
+
+    # Rule 4: Suspicious Price Manipulation
+    if price < 0.99:
+        violations.append("Extreme Low Price: Possible Choice Manipulation / Fee Avoidance")
+
+    # Rule 5: Non-Secure Image Policy
+    if image_url and str(image_url).startswith("http://"):
+        violations.append("Non-Compliant HTTP Image (eBay HTTPS Policy Violation)")
+
+    if not violations:
+        return "🟢 Clean Compliant", "No violations detected.", "LOW"
+    elif any("Keyword Spam" in v or "Extreme Low Price" in v for v in violations):
+        return "🔴 High Risk Violation", " | ".join(violations), "HIGH"
+    else:
+        return "🟡 Policy Warning", " | ".join(violations), "MEDIUM"
+
 def search_ebay_market(keyword, marketplace_id="EBAY_US", limit=50, sort_order="newlyListed", condition_filter="ALL"):
     token = get_app_access_token()
     if not token:
@@ -1207,19 +1254,19 @@ elif selected_page == "📈 Sales & Revenue Reports":
             st.info("No sales records found for this period. Click '🔄 Sync Sales Data' to fetch.")
 
 # ==========================================================
-# PAGE C: PRODUCT HUNTING & MARKET RESEARCH
+# PAGE C: PRODUCT HUNTING & RESEARCH (WITH COMPETITOR VIOLATIONS AUDIT)
 # ==========================================================
 elif selected_page == "🔍 Product Hunting & Research":
     st.markdown(
         """
     <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 8px;">
         <img src="https://upload.wikimedia.org/wikipedia/commons/1/1b/EBay_logo.svg" width="75">
-        <h2 style="margin: 0; color: #0F172A; font-weight: 700;">Product Hunting & Competitor Research</h2>
+        <h2 style="margin: 0; color: #0F172A; font-weight: 700;">Product Hunting & Competitor Policy Audit</h2>
     </div>
     """,
         unsafe_allow_html=True,
     )
-    st.caption("Live marketplace competitor search, price trends, and product hunting metrics.")
+    st.caption("Scan marketplace competitors, evaluate price benchmarks, and audit competitor listing policy violations.")
 
     with st.container():
         st.markdown("#### 🔎 Research Product Niche / Keyword")
@@ -1239,10 +1286,10 @@ elif selected_page == "🔍 Product Hunting & Research":
 
         c_hunt_btn, _ = st.columns([1.5, 4])
         with c_hunt_btn:
-            hunt_submit = st.button("🚀 Analyze & Hunt Product", type="primary", use_container_width=True, key="hunt_submit_btn")
+            hunt_submit = st.button("🚀 Analyze & Audit Competitors", type="primary", use_container_width=True, key="hunt_submit_btn")
 
     if hunt_submit and search_query:
-        with st.spinner(f"Scanning eBay marketplace for '{search_query}'..."):
+        with st.spinner(f"Scanning eBay marketplace & auditing policy compliance for '{search_query}'..."):
             results, err = search_ebay_market(
                 keyword=search_query,
                 marketplace_id=market_id,
@@ -1259,6 +1306,10 @@ elif selected_page == "🔍 Product Hunting & Research":
 
             prices = []
             hunting_data = []
+
+            high_risk_competitors = 0
+            warning_competitors = 0
+            clean_competitors = 0
 
             for it in items:
                 title = it.get("title", "N/A")
@@ -1278,54 +1329,89 @@ elif selected_page == "🔍 Product Hunting & Research":
                 seller = it.get("seller", {}).get("username", "N/A")
                 feedback = it.get("seller", {}).get("feedbackPercentage", "N/A")
                 item_url = it.get("itemWebUrl", "#")
+                image_url = it.get("image", {}).get("imageUrl", "")
+
+                # Audit Competitor Listing for policy violations
+                v_badge, v_reason, v_level = audit_competitor_listing(
+                    title=title,
+                    price=item_price,
+                    seller_feedback_pct=feedback,
+                    image_url=image_url
+                )
+
+                if v_level == "HIGH":
+                    high_risk_competitors += 1
+                elif v_level == "MEDIUM":
+                    warning_competitors += 1
+                else:
+                    clean_competitors += 1
 
                 hunting_data.append({
                     "Product Title": title,
+                    "Violation Status": v_badge,
+                    "Violation / Flag Reason": v_reason,
                     "Price": item_price,
-                    "Shipping Cost": shipping_cost,
-                    "Total Landed Price": round(item_price + shipping_cost, 2),
+                    "Shipping": shipping_cost,
+                    "Total Price": round(item_price + shipping_cost, 2),
                     "Currency": currency,
                     "Condition": condition,
                     "Seller": seller,
                     "Feedback %": f"{feedback}%",
-                    "Item Link": item_url
+                    "Item Link": item_url,
+                    "RiskLevel": v_level
                 })
 
-            df_hunt = pd.DataFrame(hunting_data)
+            df_hunt_raw = pd.DataFrame(hunting_data)
 
             avg_price = (sum(prices) / len(prices)) if prices else 0.0
-            min_price = min(prices) if prices else 0.0
-            max_price = max(prices) if prices else 0.0
-            primary_curr = df_hunt["Currency"].iloc[0] if not df_hunt.empty else "USD"
+            primary_curr = df_hunt_raw["Currency"].iloc[0] if not df_hunt_raw.empty else "USD"
 
             st.divider()
-            st.markdown(f"### 📊 Market Intelligence for `{search_query}`")
+            st.markdown(f"### 📊 Market & Compliance Summary for `{search_query}`")
 
+            # KPI METRICS
             hk1, hk2, hk3, hk4 = st.columns(4)
-            hk1.metric("Average Price", f"{primary_curr} {avg_price:,.2f}")
-            hk2.metric("Lowest Competitor Price", f"{primary_curr} {min_price:,.2f}")
-            hk3.metric("Highest Price", f"{primary_curr} {max_price:,.2f}")
-            hk4.metric("Active Competitors Analyzed", f"{len(items)} (of {total_found})")
+            hk1.metric("Average Market Price", f"{primary_curr} {avg_price:,.2f}")
+            hk2.metric("🟢 Clean Compliant Competitors", clean_competitors)
+            hk3.metric("🔴 High-Risk Flagged Listings", high_risk_competitors)
+            hk4.metric("🟡 Policy Warnings", warning_competitors)
 
             st.divider()
 
-            c_htitle, c_hdl = st.columns([3, 1])
-            with c_htitle:
-                st.markdown("#### 🏆 Competitor Listings & Price Analysis")
-            with c_hdl:
+            # Filter options for competitor listings
+            f_col1, f_col2 = st.columns([2, 1.2])
+            with f_col1:
+                violation_filter = st.selectbox(
+                    "Filter Competitor Listings by Compliance:",
+                    ["All Analyzed Listings", "🔴 High Risk Violations Only", "🟡 Warnings Only", "🟢 Clean Compliant Only"],
+                    key="comp_violation_filter"
+                )
+
+            filtered_hunt = df_hunt_raw
+            if violation_filter == "🔴 High Risk Violations Only":
+                filtered_hunt = df_hunt_raw[df_hunt_raw["RiskLevel"] == "HIGH"]
+            elif violation_filter == "🟡 Warnings Only":
+                filtered_hunt = df_hunt_raw[df_hunt_raw["RiskLevel"] == "MEDIUM"]
+            elif violation_filter == "🟢 Clean Compliant Only":
+                filtered_hunt = df_hunt_raw[df_hunt_raw["RiskLevel"] == "LOW"]
+
+            df_hunt_export = filtered_hunt.drop(columns=["RiskLevel"], errors="ignore")
+
+            with f_col2:
+                st.write("")
                 hunt_csv = io.StringIO()
-                df_hunt.to_csv(hunt_csv, index=False)
+                df_hunt_export.to_csv(hunt_csv, index=False)
                 st.download_button(
-                    label="📥 Export Hunting Report (CSV)",
+                    label="📥 Export Hunting Audit (CSV)",
                     data=hunt_csv.getvalue(),
-                    file_name=f"eBay_Hunting_{search_query.replace(' ', '_')}_{datetime.now().strftime('%Y%m%d')}.csv",
+                    file_name=f"eBay_Hunting_Audit_{search_query.replace(' ', '_')}_{datetime.now().strftime('%Y%m%d')}.csv",
                     mime="text/csv",
                     use_container_width=True,
                     type="primary"
                 )
 
             st.dataframe(
-                df_hunt,
+                df_hunt_export,
                 column_config={
                     "Item Link": st.column_config.LinkColumn("View on eBay")
                 },
@@ -1336,7 +1422,7 @@ elif selected_page == "🔍 Product Hunting & Research":
             st.warning("No listings found matching your search keyword and filters.")
 
 # ==========================================================
-# PAGE D: LISTING VIOLATIONS & POLICY HEALTH (NEW COMPLIANCE PAGE)
+# PAGE D: LISTING VIOLATIONS & POLICY HEALTH (YOUR ACCOUNT)
 # ==========================================================
 elif selected_page == "⚠️ Listing Violations & Policy":
     st.markdown(
@@ -1427,7 +1513,6 @@ elif selected_page == "⚠️ Listing Violations & Policy":
 
         st.divider()
 
-        # KPI Metrics
         vk1, vk2, vk3 = st.columns(3)
         vk1.metric("Total Flagged Listings", len(set([x['Listing ID'] for x in parsed_violations])))
         vk2.metric("Critical Action Items (Block)", critical_count)
@@ -1436,7 +1521,6 @@ elif selected_page == "⚠️ Listing Violations & Policy":
         st.divider()
 
         if parsed_violations:
-            # Filter by severity
             sev_choice = st.radio("Filter Violations by Severity:", ["All Issues", "Critical Only", "Warnings Only"], horizontal=True)
             
             if sev_choice == "Critical Only":
