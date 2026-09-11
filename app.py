@@ -1,10 +1,13 @@
 import base64
 from datetime import datetime, timedelta, timezone
+import email.message
 import hashlib
 import io
 import json
 import os
+import random
 import re
+import smtplib
 import time
 from urllib.parse import parse_qs, unquote, urlparse
 import pandas as pd
@@ -28,6 +31,10 @@ RUNAME = st.secrets.get(
     "EBAY_RUNAME",
     os.getenv("EBAY_RUNAME", "Nawaz_Iqbal-NawazIqb-eBayAu-pifoqzze"),
 )
+
+# SMTP Config for sending OTPs
+SMTP_EMAIL = st.secrets.get("SMTP_EMAIL", os.getenv("SMTP_EMAIL", ""))
+SMTP_PASSWORD = st.secrets.get("SMTP_PASSWORD", os.getenv("SMTP_PASSWORD", ""))
 
 STORES_FILE = "connected_stores.json"
 USERS_FILE = "users_db.json"
@@ -211,7 +218,7 @@ DEFAULT_TEMPLATES = {
     ),
 }
 
-# --- PERSISTENCE HELPERS ---
+# --- PERSISTENCE & SECURITY HELPERS ---
 def hash_pass(password):
     return hashlib.sha256(str(password).strip().encode()).hexdigest()
 
@@ -232,6 +239,27 @@ def load_json(filepath, default):
 def save_json(filepath, data):
     with open(filepath, "w") as f:
         json.dump(data, f, indent=4)
+
+def send_otp_email(receiver_email, otp_code, purpose="Verification"):
+    if not SMTP_EMAIL or not SMTP_PASSWORD:
+        return False, "SMTP settings not configured. Please set SMTP_EMAIL and SMTP_PASSWORD in secrets."
+    try:
+        msg = email.message.EmailMessage()
+        msg["Subject"] = f"Your {purpose} Code - eBay Automation Portal"
+        msg["From"] = SMTP_EMAIL
+        msg["To"] = receiver_email
+        msg.set_content(
+            f"Hello,\n\nYour One-Time Password (OTP) for {purpose.lower()} is: {otp_code}\n\n"
+            "This code is valid for 10 minutes. If you did not request this, please ignore this email.\n\n"
+            "Regards,\neBay Portal Support Team"
+        )
+
+        with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
+            server.login(SMTP_EMAIL, SMTP_PASSWORD)
+            server.send_message(msg)
+        return True, "OTP successfully sent!"
+    except Exception as e:
+        return False, f"Failed to send email: {str(e)}"
 
 # --- AUTH & API HELPERS ---
 def clean_auth_code(input_str):
@@ -468,7 +496,6 @@ def fetch_ebay_compliance_violations(access_token, marketplace_id="EBAY_US"):
 
     return all_violations
 
-# --- ADVANCED COMPETITOR POLICY AUDIT ENGINE ---
 SPAM_TERMS = [
     "free shipping", "l@@k", "wow", "must see", "best price", "authentic",
     "genuine", "top rated", "brand new sealed", "rare", "hot", "fast ship"
@@ -561,8 +588,18 @@ if "logged_in" not in st.session_state:
 if "auth_mode" not in st.session_state:
     st.session_state.auth_mode = "signin"
 
+# OTP state tracking for both Signup & Forgot Password
+if "otp_code" not in st.session_state:
+    st.session_state.otp_code = None
+if "otp_target_user" not in st.session_state:
+    st.session_state.otp_target_user = None
+if "otp_verified" not in st.session_state:
+    st.session_state.otp_verified = False
+if "signup_temp_data" not in st.session_state:
+    st.session_state.signup_temp_data = None
+
 # ==========================================================
-# 1. LOGIN & SIGN UP
+# 1. AUTHENTICATION (SIGN IN / SIGN UP WITH OTP / FORGOT PASSWORD OTP)
 # ==========================================================
 if not st.session_state.logged_in:
     c1, c2, c3 = st.columns([1, 1.4, 1])
@@ -572,12 +609,13 @@ if not st.session_state.logged_in:
         <div style="text-align: center; padding: 22px 20px 14px 20px; background: #FFFFFF; border: 1px solid #CBD5E1; border-radius: 12px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05); margin-bottom: 15px;">
             <img src="https://upload.wikimedia.org/wikipedia/commons/1/1b/EBay_logo.svg" width="95" style="margin-bottom: 6px;">
             <h3 style="margin: 0; color: #0F172A; font-weight: 700;">eBay Automation Portal</h3>
-            <p style="margin-top: 4px; color: #475569; font-size: 0.85rem;">Sign in or create an account for your store</p>
+            <p style="margin-top: 4px; color: #475569; font-size: 0.85rem;">Sign in, register with verified email, or reset password</p>
         </div>
         """,
             unsafe_allow_html=True,
         )
 
+        # MODE 1: SIGN IN
         if st.session_state.auth_mode == "signin":
             with st.form("signin_form"):
                 uname = st.text_input("Username").strip()
@@ -589,7 +627,7 @@ if not st.session_state.logged_in:
                 if submit_btn:
                     saved_admin_pass = users_db.get("admin", {}).get("password")
                     if uname.lower() == "admin" and (
-                        (saved_admin_pass and saved_admin_pass == hash_pass(pword))
+                        (saved_admin_pass and (saved_admin_pass == hash_pass(pword) or saved_admin_pass == pword))
                         or (not saved_admin_pass and (pword == "admin" or pword == "admin123"))
                         or (pword == "admin")
                     ):
@@ -600,9 +638,9 @@ if not st.session_state.logged_in:
                         st.success("Admin Login Successful!")
                         st.rerun()
 
-                    elif (
-                        uname in users_db
-                        and users_db[uname]["password"] == hash_pass(pword)
+                    elif uname in users_db and (
+                        users_db[uname].get("password") == hash_pass(pword)
+                        or users_db[uname].get("password") == pword
                     ):
                         st.session_state.logged_in = True
                         st.session_state.username = uname
@@ -613,52 +651,181 @@ if not st.session_state.logged_in:
                     else:
                         st.error("Invalid Username or Password.")
 
-        else:
-            with st.form("signup_form"):
-                new_uname = st.text_input("Username").strip()
-                new_pword = st.text_input("Password", type="password").strip()
-                store_label = st.text_input("Your eBay Store Name / Alias:").strip()
-                
-                st.write("")
-                signup_btn = st.form_submit_button("Sign Up", use_container_width=True, type="primary")
+            col_btn_fp, _ = st.columns([1.5, 1])
+            with col_btn_fp:
+                if st.button("❓ Forgot Password?", type="secondary", use_container_width=True):
+                    st.session_state.auth_mode = "forgot"
+                    st.session_state.otp_code = None
+                    st.session_state.otp_verified = False
+                    st.rerun()
 
-                if signup_btn:
-                    if new_uname and new_pword and store_label:
-                        if new_uname in users_db or new_uname.lower() == "admin":
-                            st.error("Username already exists. Choose another.")
+        # MODE 2: SIGN UP WITH MANDATORY EMAIL OTP VERIFICATION
+        elif st.session_state.auth_mode == "signup":
+            if not st.session_state.otp_code:
+                with st.form("signup_form"):
+                    new_uname = st.text_input("Choose Username:").strip()
+                    new_email = st.text_input("Your Email Address:").strip()
+                    new_pword = st.text_input("Password:", type="password").strip()
+                    store_label = st.text_input("Your eBay Store Name / Alias:").strip()
+                    
+                    st.write("")
+                    signup_btn = st.form_submit_button("Send Verification Code", use_container_width=True, type="primary")
+
+                    if signup_btn:
+                        if new_uname and new_email and new_pword and store_label:
+                            if "@" not in new_email or "." not in new_email:
+                                st.error("Please enter a valid email address.")
+                            elif new_uname in users_db or new_uname.lower() == "admin":
+                                st.error("Username already exists. Choose another.")
+                            else:
+                                code = str(random.randint(100000, 999999))
+                                success, err_msg = send_otp_email(new_email, code, purpose="Registration Verification")
+                                if success:
+                                    st.session_state.otp_code = code
+                                    st.session_state.signup_temp_data = {
+                                        "username": new_uname,
+                                        "email": new_email.lower(),
+                                        "password": hash_pass(new_pword),
+                                        "role": "client",
+                                        "assigned_stores": [store_label],
+                                    }
+                                    st.success(f"Verification code sent to {new_email}!")
+                                    time.sleep(1)
+                                    st.rerun()
+                                else:
+                                    st.error(f"Failed to send verification email: {err_msg}")
                         else:
-                            users_db[new_uname] = {
-                                "password": hash_pass(new_pword),
-                                "role": "client",
-                                "assigned_stores": [store_label],
+                            st.warning("Please fill in all fields.")
+            else:
+                # Verify Registration OTP
+                temp_info = st.session_state.signup_temp_data
+                st.info(f"We've sent a 6-digit code to **{temp_info['email']}** to complete your registration.")
+                reg_otp_input = st.text_input("Enter 6-Digit OTP:", max_chars=6, key="reg_otp_in").strip()
+
+                col_reg1, col_reg2 = st.columns(2)
+                with col_reg1:
+                    if st.button("✅ Verify & Register", type="primary", use_container_width=True):
+                        if reg_otp_input == st.session_state.otp_code:
+                            users_db[temp_info["username"]] = {
+                                "email": temp_info["email"],
+                                "password": temp_info["password"],
+                                "role": temp_info["role"],
+                                "assigned_stores": temp_info["assigned_stores"],
                             }
                             save_json(USERS_FILE, users_db)
-                            
+
                             st.session_state.logged_in = True
-                            st.session_state.username = new_uname
+                            st.session_state.username = temp_info["username"]
                             st.session_state.role = "client"
-                            st.session_state.assigned_stores = [store_label]
-                            st.success("Account created successfully! Redirecting...")
+                            st.session_state.assigned_stores = temp_info["assigned_stores"]
+                            st.session_state.otp_code = None
+                            st.session_state.signup_temp_data = None
+                            st.success("Account successfully verified and registered!")
                             time.sleep(1)
                             st.rerun()
-                    else:
-                        st.warning("Please fill in all fields (Username, Password & Store Name).")
+                        else:
+                            st.error("Invalid verification code. Please check your inbox.")
+                with col_reg2:
+                    if st.button("Change Email / Back", type="secondary", use_container_width=True):
+                        st.session_state.otp_code = None
+                        st.session_state.signup_temp_data = None
+                        st.rerun()
 
+        # MODE 3: FORGOT PASSWORD (OTP VERIFICATION)
+        elif st.session_state.auth_mode == "forgot":
+            st.markdown("#### 🔐 Password Reset via Email OTP")
+            
+            # Step A: Request OTP
+            if not st.session_state.otp_code:
+                f_user = st.text_input("Enter your Username or Registered Email:", key="f_user_in").strip()
+                if st.button("📩 Send 6-Digit OTP", type="primary", use_container_width=True):
+                    matched_user = None
+                    target_email = None
+
+                    for u, data in users_db.items():
+                        if u.lower() == f_user.lower() or data.get("email", "").lower() == f_user.lower():
+                            matched_user = u
+                            target_email = data.get("email")
+                            break
+
+                    if matched_user and target_email:
+                        code = str(random.randint(100000, 999999))
+                        success, err_msg = send_otp_email(target_email, code, purpose="Password Reset")
+                        if success:
+                            st.session_state.otp_code = code
+                            st.session_state.otp_target_user = matched_user
+                            st.success(f"OTP sent to {target_email[:3]}***@{target_email.split('@')[1]}!")
+                            time.sleep(1)
+                            st.rerun()
+                        else:
+                            st.error(f"Error: {err_msg}")
+                    else:
+                        st.error("No account found with this username or email.")
+
+            # Step B: Verify OTP
+            elif not st.session_state.otp_verified:
+                st.info(f"An OTP was sent to the registered email for **{st.session_state.otp_target_user}**.")
+                entered_otp = st.text_input("Enter 6-digit OTP Code:", max_chars=6, key="otp_in").strip()
+                
+                col_ov1, col_ov2 = st.columns(2)
+                with col_ov1:
+                    if st.button("✅ Verify OTP", type="primary", use_container_width=True):
+                        if entered_otp == st.session_state.otp_code:
+                            st.session_state.otp_verified = True
+                            st.success("OTP Verified! Set your new password.")
+                            time.sleep(1)
+                            st.rerun()
+                        else:
+                            st.error("Invalid OTP. Please check your email.")
+                with col_ov2:
+                    if st.button("Resend Code", type="secondary", use_container_width=True):
+                        st.session_state.otp_code = None
+                        st.rerun()
+
+            # Step C: Set New Password
+            else:
+                st.success(f"Identity confirmed for `{st.session_state.otp_target_user}`.")
+                new_reset_pass = st.text_input("Enter New Password:", type="password", key="nrp_in").strip()
+                confirm_reset_pass = st.text_input("Confirm New Password:", type="password", key="cnrp_in").strip()
+
+                if st.button("💾 Save New Password", type="primary", use_container_width=True):
+                    if new_reset_pass and new_reset_pass == confirm_reset_pass:
+                        u_target = st.session_state.otp_target_user
+                        users_db[u_target]["password"] = hash_pass(new_reset_pass)
+                        save_json(USERS_FILE, users_db)
+                        
+                        st.success("Password reset successfully! Please sign in.")
+                        st.session_state.otp_code = None
+                        st.session_state.otp_target_user = None
+                        st.session_state.otp_verified = False
+                        st.session_state.auth_mode = "signin"
+                        time.sleep(1.5)
+                        st.rerun()
+                    else:
+                        st.error("Passwords do not match or are empty.")
+
+        # Auth Mode Switcher Bar
         st.write("")
         col_sw1, col_sw2 = st.columns(2)
         with col_sw1:
             if st.button("🔑 Sign In", use_container_width=True, type="secondary" if st.session_state.auth_mode == "signin" else "primary"):
                 st.session_state.auth_mode = "signin"
+                st.session_state.otp_code = None
+                st.session_state.otp_verified = False
+                st.session_state.signup_temp_data = None
                 st.rerun()
         with col_sw2:
             if st.button("➕ Sign Up", use_container_width=True, type="secondary" if st.session_state.auth_mode == "signup" else "primary"):
                 st.session_state.auth_mode = "signup"
+                st.session_state.otp_code = None
+                st.session_state.otp_verified = False
+                st.session_state.signup_temp_data = None
                 st.rerun()
 
     st.stop()
 
 # ==========================================================
-# 2. LOGGED IN DASHBOARD (NEW EXACT ORDERED SEQUENCE)
+# 2. LOGGED IN DASHBOARD
 # ==========================================================
 if st.session_state.role == "admin":
     accessible_stores = stores
@@ -705,10 +872,10 @@ with st.sidebar:
             
             auth_ok = False
             if u_key == "admin":
-                if (saved_p and saved_p == hash_pass(c_p)) or (c_p == "admin" or c_p == "admin123"):
+                if (saved_p and (saved_p == hash_pass(c_p) or saved_p == c_p)) or (c_p == "admin" or c_p == "admin123"):
                     auth_ok = True
             else:
-                if saved_p and saved_p == hash_pass(c_p):
+                if saved_p and (saved_p == hash_pass(c_p) or saved_p == c_p):
                     auth_ok = True
 
             if auth_ok:
@@ -1646,7 +1813,7 @@ elif (
 ):
     st.markdown("## 👥 Self-Registered Clients & Stores")
     st.caption(
-        "Monitor all registered clients, their store names, and connected status."
+        "Monitor registered clients, verified recovery emails, and eBay connection status."
     )
 
     client_users = {k: v for k, v in users_db.items() if k != "admin"}
@@ -1656,35 +1823,45 @@ elif (
     else:
         for u, data in client_users.items():
             assigned = data.get("assigned_stores", ["N/A"])[0]
+            email_addr = data.get("email", "Not provided")
             is_connected = assigned in stores
 
             with st.container():
                 st.markdown(
                     f"""
-                <div style="padding: 14px 18px; background: #FFFFFF; border: 1px solid #CBD5E1; border-radius: 8px; margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center;">
-                    <div>
-                        <strong style="font-size: 1.05rem;">👤 Client: {u}</strong><br>
-                        <span style="color: #475569; font-size: 0.85rem;">Store Name: <b>{assigned}</b></span>
-                    </div>
-                    <div>
-                        <span style="color: {'#16A34A' if is_connected else '#DC2626'}; font-weight: 600; font-size: 0.9rem;">
-                            {'● eBay Linked' if is_connected else '○ Pending Connection'}
-                        </span>
+                <div style="padding: 16px 20px; background: #FFFFFF; border: 1px solid #CBD5E1; border-radius: 10px; margin-bottom: 12px;">
+                    <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+                        <div>
+                            <strong style="font-size: 1.15rem; color: #0F172A;">👤 Client: {u}</strong><br>
+                            <span style="color: #475569; font-size: 0.9rem;">Verified Email: <b>{email_addr}</b></span><br>
+                            <span style="color: #475569; font-size: 0.9rem;">Store Alias: <b>{assigned}</b></span>
+                        </div>
+                        <div>
+                            <span style="color: {'#16A34A' if is_connected else '#DC2626'}; font-weight: 600; font-size: 0.9rem;">
+                                {'● eBay Linked' if is_connected else '○ Pending Connection'}
+                            </span>
+                        </div>
                     </div>
                 </div>
                 """,
                     unsafe_allow_html=True,
                 )
-                if st.button(
-                    f"🗑️ Delete Client {u}",
-                    key=f"del_client_{u}",
-                    type="secondary",
-                ):
-                    del users_db[u]
-                    save_json(USERS_FILE, users_db)
-                    st.success(f"Client '{u}' removed!")
-                    time.sleep(1)
-                    st.rerun()
+
+                col_cd1, _ = st.columns([1, 4])
+                with col_cd1:
+                    if st.button(
+                        f"🗑️ Delete Client",
+                        key=f"del_client_{u}",
+                        type="secondary",
+                        use_container_width=True
+                    ):
+                        del users_db[u]
+                        save_json(USERS_FILE, users_db)
+                        st.success(f"Client '{u}' removed!")
+                        time.sleep(1)
+                        st.rerun()
+
+                st.divider()
 
 # ==========================================================
 # 7. MESSAGE TEMPLATES (CLIENT & ADMIN)
