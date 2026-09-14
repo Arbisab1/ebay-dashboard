@@ -1124,7 +1124,25 @@ if "Orders &" in selected_page:
                         orders = []
 
         if orders:
+            # --- TOTAL ORDERS & TOTAL SALES OVERVIEW BANNER ---
+            total_synced_orders = len(orders)
+            total_synced_sales = 0.0
+            currency_symbol_live = "USD"
+            for o in orders:
+                pricing = o.get("pricingSummary", {})
+                sub_obj = pricing.get("priceSubtotal", {}) or pricing.get("subtotal", {})
+                try:
+                    total_synced_sales += float(sub_obj.get("value", 0.0))
+                    currency_symbol_live = sub_obj.get("currency", currency_symbol_live)
+                except Exception:
+                    pass
+
+            st.write("")
+            b_col1, b_col2 = st.columns(2)
+            b_col1.metric("📦 Total Orders Received", total_synced_orders)
+            b_col2.metric("💰 Total Sales Revenue", f"{currency_symbol_live} {total_synced_sales:,.2f}")
             st.divider()
+
             col_filter, col_template = st.columns([2, 2])
 
             filter_options = [
@@ -1924,7 +1942,6 @@ elif (
     user_data_obj = users_db.get(curr_user, {}) if st.session_state.role != "admin" else {}
     max_allowed_limit = user_data_obj.get("max_stores", 3) if st.session_state.role != "admin" else 999
     
-    # User's currently linked stores count
     user_current_stores = [s for s in stores.keys() if st.session_state.role == "admin" or s in user_data_obj.get("assigned_stores", [])]
 
     c_link, c_manage = st.columns([1.2, 1])
@@ -2014,7 +2031,7 @@ elif (
                         st.rerun()
 
 # ==========================================================
-# 6. REGISTERED CLIENTS OVERVIEW (ADMIN ONLY - WITH STORE LIMIT)
+# 6. REGISTERED CLIENTS OVERVIEW (ADMIN ONLY)
 # ==========================================================
 elif (
     selected_page == "👥 Registered Clients Overview"
