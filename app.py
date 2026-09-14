@@ -700,6 +700,7 @@ if not st.session_state.logged_in:
                                     "password": hash_pass(new_pword),
                                     "role": "client",
                                     "assigned_stores": [store_label],
+                                    "max_stores": 3,  # Default store limit
                                     "allowed_modules": ALL_MODULES,
                                 }
                                 
@@ -725,6 +726,7 @@ if not st.session_state.logged_in:
                                 "password": temp_info["password"],
                                 "role": temp_info["role"],
                                 "assigned_stores": temp_info["assigned_stores"],
+                                "max_stores": temp_info.get("max_stores", 3),
                                 "allowed_modules": temp_info.get("allowed_modules", ALL_MODULES),
                             }
                             save_json(USERS_FILE, users_db)
@@ -870,10 +872,12 @@ if not st.session_state.logged_in:
 if st.session_state.role == "admin":
     accessible_stores = stores
 else:
+    u_data = users_db.get(st.session_state.username, {})
+    client_assigned_names = u_data.get("assigned_stores", [])
     accessible_stores = {
         k: v
         for k, v in stores.items()
-        if k in st.session_state.assigned_stores
+        if k in client_assigned_names
     }
 
 # --- SIDEBAR ---
@@ -1905,7 +1909,7 @@ elif selected_page == "💰 eBay Fees & Profit Calculator":
         )
 
 # ==========================================================
-# 5. LINK & MANAGE STORES
+# 5. LINK & MANAGE STORES (WITH PER-USER STORE LIMIT)
 # ==========================================================
 elif (
     "Connect My eBay Store" in selected_page
@@ -1916,58 +1920,67 @@ elif (
         "Securely authenticate your production eBay account via official OAuth."
     )
 
+    curr_user = st.session_state.username
+    user_data_obj = users_db.get(curr_user, {}) if st.session_state.role != "admin" else {}
+    max_allowed_limit = user_data_obj.get("max_stores", 3) if st.session_state.role != "admin" else 999
+    
+    # User's currently linked stores count
+    user_current_stores = [s for s in stores.keys() if st.session_state.role == "admin" or s in user_data_obj.get("assigned_stores", [])]
+
     c_link, c_manage = st.columns([1.2, 1])
 
     with c_link:
         st.markdown("### 🔗 Authorize Account")
-        st.info("Step 1: Click the link below and authorize on eBay:")
-        st.markdown(f"👉 [**Authorize with eBay (Click Here)**]({AUTH_URL})")
-        st.write("")
+        st.info(f"Store Limit Status: **{len(user_current_stores)} / {max_allowed_limit if st.session_state.role != 'admin' else 'Unlimited'}** stores linked.")
+        
+        if st.session_state.role == "admin" or len(user_current_stores) < max_allowed_limit:
+            st.info("Step 1: Click the link below and authorize on eBay:")
+            st.markdown(f"👉 [**Authorize with eBay (Click Here)**]({AUTH_URL})")
+            st.write("")
 
-        redirect_input = st.text_input("Redirected URL / Code:", key="auth_code_input")
+            redirect_input = st.text_input("Redirected URL / Code:", key="auth_code_input")
 
-        assigned_s = (
-            st.session_state.assigned_stores[0]
-            if st.session_state.assigned_stores
-            and st.session_state.assigned_stores[0] != "ALL"
-            else ""
-        )
-        store_alias = st.text_input("Store Name / Label:", value=assigned_s, key="store_label_input")
+            assigned_s = ""
+            store_alias = st.text_input("Store Name / Label:", value=assigned_s, key="store_label_input")
 
-        if st.button("Complete Authorization", type="primary", key="complete_auth_btn"):
-            if redirect_input and store_alias:
-                final_code = clean_auth_code(redirect_input)
-                with st.spinner("Exchanging code for tokens..."):
-                    status, token_data = exchange_code_for_tokens(final_code)
+            if st.button("Complete Authorization", type="primary", key="complete_auth_btn"):
+                if redirect_input and store_alias:
+                    final_code = clean_auth_code(redirect_input)
+                    with st.spinner("Exchanging code for tokens..."):
+                        status, token_data = exchange_code_for_tokens(final_code)
 
-                if status == 200 and "access_token" in token_data:
-                    stores[store_alias] = {
-                        "access_token": token_data["access_token"],
-                        "refresh_token": token_data.get("refresh_token", ""),
-                    }
-                    save_json(STORES_FILE, stores)
+                    if status == 200 and "access_token" in token_data:
+                        stores[store_alias] = {
+                            "access_token": token_data["access_token"],
+                            "refresh_token": token_data.get("refresh_token", ""),
+                        }
+                        save_json(STORES_FILE, stores)
 
-                    u_curr = st.session_state.username
-                    if u_curr in users_db:
-                        users_db[u_curr]["assigned_stores"] = [store_alias]
-                        save_json(USERS_FILE, users_db)
-                        st.session_state.assigned_stores = [store_alias]
-                    
-                    st.cache_data.clear()
-                    st.success(f"Store '{store_alias}' linked successfully!")
-                    time.sleep(1)
-                    st.rerun()
+                        if curr_user in users_db:
+                            current_list = users_db[curr_user].get("assigned_stores", [])
+                            if store_alias not in current_list:
+                                current_list.append(store_alias)
+                            users_db[curr_user]["assigned_stores"] = current_list
+                            save_json(USERS_FILE, users_db)
+                            st.session_state.assigned_stores = current_list
+                        
+                        st.cache_data.clear()
+                        st.success(f"Store '{store_alias}' linked successfully!")
+                        time.sleep(1)
+                        st.rerun()
+                    else:
+                        st.error("Authentication failed. Please verify code/URL.")
                 else:
-                    st.error("Authentication failed. Please verify code/URL.")
-            else:
-                st.warning("All fields are required.")
+                    st.warning("All fields are required.")
+        else:
+            st.warning(f"⚠️ You have reached your maximum allowed store limit ({max_allowed_limit} stores). Contact admin to increase your limit.")
 
     with c_manage:
         st.markdown("### 🏬 Connected Store Status")
-        if not accessible_stores:
+        if not user_current_stores:
             st.info("No stores linked yet.")
         else:
-            for s_name in list(accessible_stores.keys()):
+            for s_name in user_current_stores:
                 with st.container():
                     st.markdown(
                         f"""
@@ -1983,15 +1996,25 @@ elif (
                         key=f"del_store_{s_name}",
                         type="secondary",
                     ):
-                        del stores[s_name]
-                        save_json(STORES_FILE, stores)
+                        if s_name in stores:
+                            del stores[s_name]
+                            save_json(STORES_FILE, stores)
+                        
+                        if curr_user in users_db:
+                            cur_assigned = users_db[curr_user].get("assigned_stores", [])
+                            if s_name in cur_assigned:
+                                cur_assigned.remove(s_name)
+                                users_db[curr_user]["assigned_stores"] = cur_assigned
+                                save_json(USERS_FILE, users_db)
+                                st.session_state.assigned_stores = cur_assigned
+
                         st.cache_data.clear()
                         st.success(f"Store '{s_name}' removed!")
                         time.sleep(1)
                         st.rerun()
 
 # ==========================================================
-# 6. REGISTERED CLIENTS OVERVIEW (ADMIN ONLY)
+# 6. REGISTERED CLIENTS OVERVIEW (ADMIN ONLY - WITH STORE LIMIT)
 # ==========================================================
 elif (
     selected_page == "👥 Registered Clients Overview"
@@ -1999,7 +2022,7 @@ elif (
 ):
     st.markdown("## 👥 Self-Registered Clients & Service Controls")
     st.caption(
-        "Manage client accounts, update emails, and enable/disable individual services per client."
+        "Manage client accounts, update emails, set store limits, and enable/disable individual services per client."
     )
 
     client_users = {k: v for k, v in users_db.items() if k != "admin"}
@@ -2008,9 +2031,9 @@ elif (
         st.info("No clients have signed up yet.")
     else:
         for u, data in client_users.items():
-            assigned = data.get("assigned_stores", ["N/A"])[0]
+            assigned_list = data.get("assigned_stores", [])
             email_addr = data.get("email", "")
-            is_connected = assigned in stores
+            current_max_stores = data.get("max_stores", 3)
             curr_allowed = data.get("allowed_modules", ALL_MODULES)
 
             with st.container():
@@ -2021,12 +2044,7 @@ elif (
                         <div>
                             <strong style="font-size: 1.15rem; color: #0F172A;">👤 Client: {u}</strong><br>
                             <span style="color: #475569; font-size: 0.9rem;">Verified Email: <b>{email_addr if email_addr else 'Not Added'}</b></span><br>
-                            <span style="color: #475569; font-size: 0.9rem;">Store Alias: <b>{assigned}</b></span>
-                        </div>
-                        <div>
-                            <span style="color: {'#16A34A' if is_connected else '#DC2626'}; font-weight: 600; font-size: 0.9rem;">
-                                {'● eBay Linked' if is_connected else '○ Pending Connection'}
-                            </span>
+                            <span style="color: #475569; font-size: 0.9rem;">Linked Stores: <b>{len(assigned_list)} / Max Limit: {current_max_stores}</b></span>
                         </div>
                     </div>
                 </div>
@@ -2034,7 +2052,7 @@ elif (
                     unsafe_allow_html=True,
                 )
 
-                with st.expander(f"⚙️ Manage Email & Services for {u}"):
+                with st.expander(f"⚙️ Manage Settings & Store Limit for {u}"):
                     st.markdown("##### ✉️ Update / Add Client Email")
                     new_email_input = st.text_input(f"New Email for {u}:", value=email_addr, key=f"email_input_{u}")
                     if st.button("💾 Update Email", key=f"btn_save_email_{u}", type="primary"):
@@ -2046,6 +2064,17 @@ elif (
                             st.rerun()
                         else:
                             st.error("Please enter a valid email address.")
+
+                    st.divider()
+                    st.markdown("##### 🏬 Set Max Allowed eBay Stores Limit")
+                    new_max_limit = st.number_input(f"Max Stores for {u}:", min_value=1, max_value=100, value=int(current_max_stores), step=1, key=f"max_stores_input_{u}")
+                    
+                    if st.button("💾 Save Store Limit", key=f"btn_save_limit_{u}", type="primary"):
+                        users_db[u]["max_stores"] = int(new_max_limit)
+                        save_json(USERS_FILE, users_db)
+                        st.success(f"Max store limit set to {new_max_limit} for {u}!")
+                        time.sleep(1)
+                        st.rerun()
 
                     st.divider()
                     st.markdown("##### 🛠️ Select Services Enabled for Client:")
