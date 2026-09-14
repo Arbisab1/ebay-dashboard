@@ -700,7 +700,7 @@ if not st.session_state.logged_in:
                                     "password": hash_pass(new_pword),
                                     "role": "client",
                                     "assigned_stores": [store_label],
-                                    "max_stores": 3,  # Default store limit
+                                    "max_stores": 3,
                                     "allowed_modules": ALL_MODULES,
                                 }
                                 
@@ -1124,23 +1124,35 @@ if "Orders &" in selected_page:
                         orders = []
 
         if orders:
-            # --- TOTAL ORDERS & TOTAL SALES OVERVIEW BANNER ---
+            # --- OVERVIEW METRICS: TOTAL & DAILY SALES / ORDERS ---
+            today_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
             total_synced_orders = len(orders)
             total_synced_sales = 0.0
+            daily_orders_count = 0
+            daily_sales_revenue = 0.0
             currency_symbol_live = "USD"
+
             for o in orders:
+                creation_dt_raw = o.get("creationDate", "")
                 pricing = o.get("pricingSummary", {})
                 sub_obj = pricing.get("priceSubtotal", {}) or pricing.get("subtotal", {})
                 try:
-                    total_synced_sales += float(sub_obj.get("value", 0.0))
+                    val = float(sub_obj.get("value", 0.0))
+                    total_synced_sales += val
                     currency_symbol_live = sub_obj.get("currency", currency_symbol_live)
+                    
+                    if creation_dt_raw.startswith(today_str):
+                        daily_orders_count += 1
+                        daily_sales_revenue += val
                 except Exception:
                     pass
 
             st.write("")
-            b_col1, b_col2 = st.columns(2)
-            b_col1.metric("📦 Total Orders Received", total_synced_orders)
-            b_col2.metric("💰 Total Sales Revenue", f"{currency_symbol_live} {total_synced_sales:,.2f}")
+            dc1, dc2, dc3, dc4 = st.columns(4)
+            dc1.metric("📦 Total Orders", total_synced_orders)
+            dc2.metric("💰 Total Revenue", f"{currency_symbol_live} {total_synced_sales:,.2f}")
+            dc3.metric("📅 Today's Orders", daily_orders_count)
+            dc4.metric("📈 Today's Sales", f"{currency_symbol_live} {daily_sales_revenue:,.2f}")
             st.divider()
 
             col_filter, col_template = st.columns([2, 2])
