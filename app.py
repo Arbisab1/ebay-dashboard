@@ -42,6 +42,7 @@ STORES_FILE = "connected_stores.json"
 USERS_FILE = "users_db.json"
 TEMPLATES_FILE = "custom_templates.json"
 LOGS_FILE = "message_logs.json"
+NOTES_FILE = "order_notes.json"
 
 AUTH_URL = (
     f"https://auth.ebay.com/oauth2/authorize?client_id={CLIENT_ID}&response_type=code&redirect_uri={RUNAME}&"
@@ -580,6 +581,7 @@ stores = load_json(STORES_FILE, {})
 users_db = load_json(USERS_FILE, {})
 templates = load_json(TEMPLATES_FILE, DEFAULT_TEMPLATES)
 logs = load_json(LOGS_FILE, {})
+order_notes = load_json(NOTES_FILE, {})
 
 # --- STRICT SECURE SESSION STATE (NO URL EXPOSURE) ---
 if "logged_in" not in st.session_state:
@@ -1285,6 +1287,9 @@ if "Orders &" in selected_page:
             for o in display_orders:
                 order_id = o.get("orderId", "")
                 buyer = o.get("buyer", {}).get("username", "Buyer")
+                buyer_note = o.get("buyerCheckoutMessage", "None")
+                current_seller_note = order_notes.get(order_id, "")
+                
                 line_items = o.get("lineItems", [])
                 item_title = line_items[0].get("title", "Item") if line_items else ""
                 item_id = line_items[0].get("legacyItemId", "N/A") if line_items else "N/A"
@@ -1323,6 +1328,17 @@ if "Orders &" in selected_page:
                     with c_det:
                         st.write(f"**Item:** {item_title}")
                         st.write(f"**Item ID:** `{item_id}`")
+                        st.write(f"**Buyer Note:** `{buyer_note}`")
+                        
+                        # --- SELLER NOTE INPUT FIELD ---
+                        new_s_note = st.text_input("Seller Note:", value=current_seller_note, key=f"snote_{order_id}")
+                        if st.button("💾 Save Seller Note", key=f"save_snote_{order_id}", type="secondary"):
+                            order_notes[order_id] = new_s_note
+                            save_json(NOTES_FILE, order_notes)
+                            st.success("Seller note saved!")
+                            time.sleep(0.5)
+                            st.rerun()
+
                         st.write(f"**Carrier:** `{carrier_name}`")
                         st.write(f"**Tracking:** `{tracking_num}`")
                         if log_key in logs:
@@ -1665,7 +1681,7 @@ elif selected_page == "⚠️ Listing Violations & Policy":
             st.success("🎉 Great news! No policy violations or compliance warnings found for this store.")
 
 # ==========================================================
-# 4. SALES & REVENUE REPORTS
+# 4. SALES & REVENUE REPORTS (WITH BUYER & SELLER NOTES)
 # ==========================================================
 elif selected_page == "📈 Sales & Revenue Reports":
     st.markdown(
@@ -1747,6 +1763,8 @@ elif selected_page == "📈 Sales & Revenue Reports":
                 order_id = o.get("orderId", "N/A")
                 created_date = o.get("creationDate", "")[:10]
                 buyer = o.get("buyer", {}).get("username", "Buyer")
+                buyer_note = o.get("buyerCheckoutMessage", "")
+                seller_note = order_notes.get(order_id, "")
                 
                 pricing = o.get("pricingSummary", {})
                 
@@ -1771,6 +1789,8 @@ elif selected_page == "📈 Sales & Revenue Reports":
                     "Order ID": order_id,
                     "Date": created_date,
                     "Buyer": buyer,
+                    "Buyer Note": buyer_note,
+                    "Seller Note": seller_note,
                     "Items": ", ".join(items_titles),
                     "Quantity": total_qty,
                     "Amount subtotal": amount_subtotal,
@@ -1818,7 +1838,7 @@ elif selected_page == "📈 Sales & Revenue Reports":
 
             st.divider()
 
-            expected_cols = ["Order ID", "Date", "Buyer", "Items", "Quantity", "Amount subtotal", "Currency", "Status"]
+            expected_cols = ["Order ID", "Date", "Buyer", "Buyer Note", "Seller Note", "Items", "Quantity", "Amount subtotal", "Currency", "Status"]
             if filtered_rows:
                 df_display = pd.DataFrame(filtered_rows).drop(columns=["RawStatus"], errors="ignore")
             else:
