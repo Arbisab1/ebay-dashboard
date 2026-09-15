@@ -1471,7 +1471,7 @@ if "Orders &" in selected_page:
             st.info("No orders found for the selected store and date range.")
 
 # ==========================================================
-# 1.5 DEDICATED FEEDBACK AUTO-REPLY HUB (SMART AUTO-PILOT)
+# 1.5 DEDICATED FEEDBACK AUTO-REPLY HUB (INTERACTIVE FEEDBACK LIST)
 # ==========================================================
 elif selected_page == "⭐ Feedback Auto-Reply":
     st.markdown(
@@ -1483,7 +1483,7 @@ elif selected_page == "⭐ Feedback Auto-Reply":
     """,
         unsafe_allow_html=True,
     )
-    st.caption("Automatically fetch feedbacks, reply ONLY to positive reviews, skip previously replied or negative/neutral reviews safely.")
+    st.caption("Fetch store feedbacks, review details, and send replies individually with full duplicate and negative/neutral protection.")
 
     if not accessible_stores:
         st.info("👋 Welcome! Your store is not connected yet.")
@@ -1528,7 +1528,6 @@ elif selected_page == "⭐ Feedback Auto-Reply":
                         f_user = item["buyer"]
                         f_rating = str(item["rating"]).strip()
 
-                        # Check if Positive (Positive score) and NOT already replied
                         if f_rating.lower() in ["positive", "1"] and fid not in current_loaded_logs:
                             success, resp_msg = send_rest_auto_reply(
                                 access_token,
@@ -1552,44 +1551,74 @@ elif selected_page == "⭐ Feedback Auto-Reply":
                 st.success(f"✅ Successfully fetched total {len(parsed_feedbacks)} feedbacks from eBay store!")
 
         st.divider()
-        st.markdown("### 📋 Complete Store Feedbacks & History")
+        st.markdown("### 📋 Feedbacks List & Interactive Reply Actions")
         
         session_feedbacks = st.session_state.get(f"parsed_fb_{active_fb_store}", [])
         current_loaded_logs = load_json(FEEDBACK_LOGS_FILE, {})
 
         if session_feedbacks:
-            fb_display_rows = []
             for item in session_feedbacks:
                 fid = item["id"]
-                score = str(item["rating"]).strip()
-                
-                # Determine status based on rating and logs
-                if fid in current_loaded_logs:
-                    status_badge = "✅ Replied"
-                elif score.lower() not in ["positive", "1"]:
-                    status_badge = "🛡️ Skipped (Negative/Neutral)"
-                else:
-                    status_badge = "⏳ Pending Reply"
+                f_buyer = item["buyer"]
+                f_score = str(item["rating"]).strip()
+                f_text = item["text"]
 
-                fb_display_rows.append({
-                    "Feedback ID": fid,
-                    "Buyer": item["buyer"],
-                    "Rating Type": score,
-                    "Comment": item["text"],
-                    "Status": status_badge
-                })
-            st.dataframe(pd.DataFrame(fb_display_rows), use_container_width=True, hide_index=True)
-        elif current_loaded_logs:
-            fb_rows = []
-            for fb_id, fb_info in current_loaded_logs.items():
-                fb_rows.append({
-                    "Feedback ID": fb_id,
-                    "Buyer": fb_info.get("buyer", "N/A"),
-                    "Rating Type": "Positive",
-                    "Comment": "Logged Reply",
-                    "Status": fb_info.get("status", "Replied")
-                })
-            st.dataframe(pd.DataFrame(fb_rows), use_container_width=True, hide_index=True)
+                is_replied = fid in current_loaded_logs
+                is_positive = f_score.lower() in ["positive", "1"]
+
+                if is_replied:
+                    badge_text = "✅ Replied"
+                elif not is_positive:
+                    badge_text = "🛡️ Skipped (Negative/Neutral)"
+                else:
+                    badge_text = "⏳ Pending Reply"
+
+                with st.expander(f"Feedback ID: {fid} | Buyer: {f_buyer} | Rating: {f_score} | {badge_text}"):
+                    c_det, c_act = st.columns([1.5, 2])
+                    with c_det:
+                        st.write(f"**Buyer Username:** `{f_buyer}`")
+                        st.write(f"**Rating Type:** `{f_score}`")
+                        st.write(f"**Buyer Comment:** \"{f_text}\"")
+                        if is_replied:
+                            st.success(f"Status: Replied ({current_loaded_logs[fid].get('time', '')})")
+                        elif not is_positive:
+                            st.warning("Status: Auto-skipped because rating is not positive.")
+                        else:
+                            st.info("Status: Ready for reply.")
+
+                    with c_act:
+                        editable_reply = st.text_area(
+                            "Reply Text:",
+                            value=reply_message_text.format(buyer=f_buyer),
+                            height=100,
+                            key=f"fb_reply_txt_{fid}"
+                        )
+
+                        if is_replied:
+                            st.info("This feedback has already been replied to.")
+                        elif not is_positive:
+                            st.info("Manual or automatic replies are disabled for non-positive feedback.")
+                        else:
+                            if st.button(f"✉️ Send Reply to {f_buyer}", key=f"btn_send_fb_{fid}", type="primary"):
+                                access_token = accessible_stores[active_fb_store]["access_token"]
+                                success, resp_msg = send_rest_auto_reply(
+                                    access_token,
+                                    fid,
+                                    f_buyer,
+                                    editable_reply
+                                )
+                                if success:
+                                    current_loaded_logs[fid] = {
+                                        "buyer": f_buyer,
+                                        "status": "Manually Replied",
+                                        "time": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                                    }
+                                    save_json(FEEDBACK_LOGS_FILE, current_loaded_logs)
+                                    st.success(f"✅ Reply sent successfully to {f_buyer}!")
+                                    time.sleep(1)
+                                    st.rerun()
+                                else:
+                                    st.error(f"❌ Failed to reply: {resp_msg}")
         else:
             st.info("No feedbacks loaded yet. Click '🔄 Sync & Fetch ALL Store Feedbacks' above to load your complete review history.")
 
