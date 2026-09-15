@@ -1428,7 +1428,7 @@ if "Orders &" in selected_page:
             st.info("No orders found for the selected store and date range.")
 
 # ==========================================================
-# 1.5 DEDICATED FEEDBACK AUTO-REPLY HUB (TRADING API & REST)
+# 1.5 DEDICATED FEEDBACK AUTO-REPLY HUB (XML PARSER & LOGS)
 # ==========================================================
 elif selected_page == "⭐ Feedback Auto-Reply":
     st.markdown(
@@ -1473,10 +1473,28 @@ elif selected_page == "⭐ Feedback Auto-Reply":
 
             with st.spinner("Fetching feedbacks via eBay Trading API..."):
                 xml_response_text = fetch_ebay_feedbacks_xml(access_token)
-                if "<Ack>Success</Ack>" in xml_response_text or "<FeedbackDetail>" in xml_response_text:
-                    st.success("✅ Feedbacks successfully fetched from eBay store!")
-                else:
-                    st.info("Sync completed. Check your connected store permissions or XML response logs.")
+                
+                parsed_feedbacks = []
+                feedback_blocks = xml_response_text.split("<FeedbackDetail>")
+                
+                for block in feedback_blocks[1:]:
+                    try:
+                        f_id = block.split("<FeedbackID>")[1].split("</FeedbackID>")[0]
+                        f_user = block.split("<CommentingUser>")[1].split("</CommentingUser>")[0]
+                        f_score = block.split("<CommentType>")[1].split("</CommentType>")[0]
+                        f_text = block.split("<CommentText>")[1].split("</CommentText>")[0]
+                        
+                        parsed_feedbacks.append({
+                            "id": f_id,
+                            "buyer": f_user,
+                            "rating": f_score,
+                            "text": f_text
+                        })
+                    except Exception:
+                        pass
+                
+                st.session_state[f"parsed_fb_{active_fb_store}"] = parsed_feedbacks
+                st.success(f"✅ Successfully fetched {len(parsed_feedbacks)} feedbacks from eBay store!")
 
         st.divider()
         st.markdown("#### 💬 Manual Test & Send Feedback Reply")
@@ -1514,22 +1532,37 @@ elif selected_page == "⭐ Feedback Auto-Reply":
                             st.error(f"❌ Failed to reply. Details: {resp_msg}")
 
         st.divider()
-        st.markdown("### 📋 Recent Store Feedbacks & Log History")
+        st.markdown("### 📋 Fetched Store Feedbacks & Log History")
         
+        session_feedbacks = st.session_state.get(f"parsed_fb_{active_fb_store}", [])
         current_loaded_logs = load_json(FEEDBACK_LOGS_FILE, {})
-        if current_loaded_logs:
+
+        if session_feedbacks:
+            fb_display_rows = []
+            for item in session_feedbacks:
+                fid = item["id"]
+                is_replied = "✅ Replied" if fid in current_loaded_logs else "⏳ Pending Reply"
+                fb_display_rows.append({
+                    "Feedback ID": fid,
+                    "Buyer": item["buyer"],
+                    "Rating Type": item["rating"],
+                    "Comment": item["text"],
+                    "Status": is_replied
+                })
+            st.dataframe(pd.DataFrame(fb_display_rows), use_container_width=True, hide_index=True)
+        elif current_loaded_logs:
             fb_rows = []
             for fb_id, fb_info in current_loaded_logs.items():
                 fb_rows.append({
                     "Feedback ID": fb_id,
                     "Buyer": fb_info.get("buyer", "N/A"),
-                    "Rating": "Positive",
-                    "Status": fb_info.get("status", "Replied"),
-                    "Time": fb_info.get("time", "")
+                    "Rating Type": "Positive",
+                    "Comment": "Logged Reply",
+                    "Status": fb_info.get("status", "Replied")
                 })
             st.dataframe(pd.DataFrame(fb_rows), use_container_width=True, hide_index=True)
         else:
-            st.info("No feedback reply logs found yet. Process a reply above to see logs populate here.")
+            st.info("No feedbacks loaded yet. Click '🔄 Sync & Fetch Store Feedbacks' above to load live store reviews.")
 
 # ==========================================================
 # 2. PRODUCT HUNTING & RESEARCH
@@ -2354,3 +2387,5 @@ elif "Message Templates" in selected_page:
         st.success(f"Template '{selected_tpl_edit}' saved successfully!")
         time.sleep(1)
         st.rerun()
+
+
