@@ -2354,6 +2354,3 @@ elif "Message Templates" in selected_page:
         st.success(f"Template '{selected_tpl_edit}' saved successfully!")
         time.sleep(1)
         st.rerun()
-
-
-Aap isay bas GitHub par apni app.py file mein paste karke save kar dein, phir yeh bilkul theek kaam karega! Kya aapko isay save karne mein koi aur madad chahiye?
