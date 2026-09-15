@@ -392,15 +392,11 @@ def send_ebay_message(access_token, item_id, buyer_username, body_text):
     )
     return "<Ack>Success</Ack>" in res.text or "<Ack>Warning</Ack>" in res.text
 
-# --- TRADING API FEEDBACK FETCHING & REPLYING ---
-def fetch_ebay_feedbacks_xml(access_token):
-    xml_payload = f"""<?xml version="1.0" encoding="utf-8"?>
-    <GetFeedbackRequest xmlns="urn:ebay:apis:eBLBaseComponents">
-      <RequesterCredentials>
-        <eBayAuthToken>{access_token}</eBayAuthToken>
-      </RequesterCredentials>
-      <DetailLevel>ReturnAll</DetailLevel>
-    </GetFeedbackRequest>"""
+# --- PAGINATED FEEDBACK FETCHING (ALL FEEDBACKS) ---
+def fetch_all_ebay_feedbacks(access_token):
+    all_parsed_feedbacks = []
+    page_number = 1
+    max_pages = 20  # Fetch up to 4000 feedbacks safely
 
     headers = {
         "X-EBAY-API-COMPATIBILITY-LEVEL": "967",
@@ -409,8 +405,54 @@ def fetch_ebay_feedbacks_xml(access_token):
         "X-EBAY-API-IAF-TOKEN": access_token,
         "Content-Type": "text/xml",
     }
-    res = requests.post("https://api.ebay.com/ws/api.dll", data=xml_payload, headers=headers)
-    return res.text
+
+    while page_number <= max_pages:
+        xml_payload = f"""<?xml version="1.0" encoding="utf-8"?>
+        <GetFeedbackRequest xmlns="urn:ebay:apis:eBLBaseComponents">
+          <RequesterCredentials>
+            <eBayAuthToken>{access_token}</eBayAuthToken>
+          </RequesterCredentials>
+          <DetailLevel>ReturnAll</DetailLevel>
+          <EntriesPerPage>200</EntriesPerPage>
+          <PageNumber>{page_number}</PageNumber>
+        </GetFeedbackRequest>"""
+
+        res = requests.post("https://api.ebay.com/ws/api.dll", data=xml_payload, headers=headers)
+        xml_response_text = res.text
+
+        if "<Ack>Success</Ack>" not in xml_response_text and "<FeedbackDetail>" not in xml_response_text:
+            break
+
+        feedback_blocks = xml_response_text.split("<FeedbackDetail>")
+        if len(feedback_blocks) <= 1:
+            break
+
+        page_count = 0
+        for block in feedback_blocks[1:]:
+            try:
+                f_id = block.split("<FeedbackID>")[1].split("</FeedbackID>")[0]
+                f_user = block.split("<CommentingUser>")[1].split("</CommentingUser>")[0]
+                f_score = block.split("<CommentType>")[1].split("</CommentType>")[0]
+                f_text = block.split("<CommentText>")[1].split("</CommentText>")[0]
+                
+                # Prevent duplicates within list
+                if not any(d['id'] == f_id for d in all_parsed_feedbacks):
+                    all_parsed_feedbacks.append({
+                        "id": f_id,
+                        "buyer": f_user,
+                        "rating": f_score,
+                        "text": f_text
+                    })
+                    page_count += 1
+            except Exception:
+                pass
+
+        if page_count == 0 or len(feedback_blocks) < 200:
+            break
+        
+        page_number += 1
+
+    return all_parsed_feedbacks
 
 def send_rest_auto_reply(oauth_token, feedback_id, recipient_user_id, reply_text):
     url = "https://api.ebay.com/commerce/feedback/v1/respond_to_feedback"
@@ -1428,7 +1470,7 @@ if "Orders &" in selected_page:
             st.info("No orders found for the selected store and date range.")
 
 # ==========================================================
-# 1.5 DEDICATED FEEDBACK AUTO-REPLY HUB (XML PARSER & LOGS)
+# 1.5 DEDICATED FEEDBACK AUTO-REPLY HUB (ALL FEEDBACKS PAGINATED)
 # ==========================================================
 elif selected_page == "⭐ Feedback Auto-Reply":
     st.markdown(
@@ -1440,7 +1482,7 @@ elif selected_page == "⭐ Feedback Auto-Reply":
     """,
         unsafe_allow_html=True,
     )
-    st.caption("Fetch store feedbacks using eBay Trading API, prevent duplicate responses, and send custom thank-you replies safely.")
+    st.caption("Fetch ALL store feedbacks using paginated eBay Trading API, prevent duplicate responses, and send replies safely.")
 
     if not accessible_stores:
         st.info("👋 Welcome! Your store is not connected yet.")
@@ -1460,7 +1502,7 @@ elif selected_page == "⭐ Feedback Auto-Reply":
         reply_message_text = templates[fb_template_choice]
 
         st.write("")
-        if st.button("🔄 Sync & Fetch Store Feedbacks", type="primary", key="sync_fb_btn"):
+        if st.button("🔄 Sync & Fetch ALL Store Feedbacks", type="primary", key="sync_fb_btn"):
             access_token = tokens["access_token"]
             test_headers = {"Authorization": f"Bearer {access_token}"}
             test_res = requests.get("https://api.ebay.com/sell/fulfillment/v1/order?limit=1", headers=test_headers)
@@ -1471,30 +1513,10 @@ elif selected_page == "⭐ Feedback Auto-Reply":
                     save_json(STORES_FILE, stores)
                     access_token = new_t
 
-            with st.spinner("Fetching feedbacks via eBay Trading API..."):
-                xml_response_text = fetch_ebay_feedbacks_xml(access_token)
-                
-                parsed_feedbacks = []
-                feedback_blocks = xml_response_text.split("<FeedbackDetail>")
-                
-                for block in feedback_blocks[1:]:
-                    try:
-                        f_id = block.split("<FeedbackID>")[1].split("</FeedbackID>")[0]
-                        f_user = block.split("<CommentingUser>")[1].split("</CommentingUser>")[0]
-                        f_score = block.split("<CommentType>")[1].split("</CommentType>")[0]
-                        f_text = block.split("<CommentText>")[1].split("</CommentText>")[0]
-                        
-                        parsed_feedbacks.append({
-                            "id": f_id,
-                            "buyer": f_user,
-                            "rating": f_score,
-                            "text": f_text
-                        })
-                    except Exception:
-                        pass
-                
+            with st.spinner("Fetching ALL feedbacks from eBay store (pagination active)..."):
+                parsed_feedbacks = fetch_all_ebay_feedbacks(access_token)
                 st.session_state[f"parsed_fb_{active_fb_store}"] = parsed_feedbacks
-                st.success(f"✅ Successfully fetched {len(parsed_feedbacks)} feedbacks from eBay store!")
+                st.success(f"✅ Successfully fetched total {len(parsed_feedbacks)} feedbacks from eBay store!")
 
         st.divider()
         st.markdown("#### 💬 Manual Test & Send Feedback Reply")
@@ -1532,7 +1554,7 @@ elif selected_page == "⭐ Feedback Auto-Reply":
                             st.error(f"❌ Failed to reply. Details: {resp_msg}")
 
         st.divider()
-        st.markdown("### 📋 Fetched Store Feedbacks & Log History")
+        st.markdown("### 📋 Complete Store Feedbacks & History")
         
         session_feedbacks = st.session_state.get(f"parsed_fb_{active_fb_store}", [])
         current_loaded_logs = load_json(FEEDBACK_LOGS_FILE, {})
@@ -1562,7 +1584,7 @@ elif selected_page == "⭐ Feedback Auto-Reply":
                 })
             st.dataframe(pd.DataFrame(fb_rows), use_container_width=True, hide_index=True)
         else:
-            st.info("No feedbacks loaded yet. Click '🔄 Sync & Fetch Store Feedbacks' above to load live store reviews.")
+            st.info("No feedbacks loaded yet. Click '🔄 Sync & Fetch ALL Store Feedbacks' above to load your complete review history.")
 
 # ==========================================================
 # 2. PRODUCT HUNTING & RESEARCH
@@ -2387,5 +2409,3 @@ elif "Message Templates" in selected_page:
         st.success(f"Template '{selected_tpl_edit}' saved successfully!")
         time.sleep(1)
         st.rerun()
-
-
