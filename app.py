@@ -1471,7 +1471,7 @@ if "Orders &" in selected_page:
             st.info("No orders found for the selected store and date range.")
 
 # ==========================================================
-# 1.5 DEDICATED FEEDBACK AUTO-REPLY HUB (ALL FEEDBACKS PAGINATED)
+# 1.5 DEDICATED FEEDBACK AUTO-REPLY HUB (SMART AUTO-PILOT)
 # ==========================================================
 elif selected_page == "⭐ Feedback Auto-Reply":
     st.markdown(
@@ -1483,7 +1483,7 @@ elif selected_page == "⭐ Feedback Auto-Reply":
     """,
         unsafe_allow_html=True,
     )
-    st.caption("Fetch ALL store feedbacks using paginated eBay Trading API, prevent duplicate responses, and send replies safely.")
+    st.caption("Automatically fetch feedbacks, reply ONLY to positive reviews, skip previously replied or negative/neutral reviews safely.")
 
     if not accessible_stores:
         st.info("👋 Welcome! Your store is not connected yet.")
@@ -1496,7 +1496,7 @@ elif selected_page == "⭐ Feedback Auto-Reply":
 
         col_fb_settings_1, col_fb_settings_2 = st.columns(2)
         with col_fb_settings_1:
-            fb_auto_pilot = st.toggle("⚡ Enable Auto-Pilot Feedback Replies", value=True, key="fb_autopilot_toggle")
+            fb_auto_pilot = st.toggle("⚡ Enable Auto-Pilot Positive Feedback Replies", value=True, key="fb_autopilot_toggle")
         with col_fb_settings_2:
             fb_template_choice = st.selectbox("Select Feedback Reply Template:", list(templates.keys()), index=get_template_index(templates, "Feedback Thank You Reply"), key="fb_tpl_select")
 
@@ -1517,6 +1517,38 @@ elif selected_page == "⭐ Feedback Auto-Reply":
             with st.spinner("Fetching ALL feedbacks from eBay store (pagination active)..."):
                 parsed_feedbacks = fetch_all_ebay_feedbacks(access_token)
                 st.session_state[f"parsed_fb_{active_fb_store}"] = parsed_feedbacks
+
+                # AUTO-PILOT EXECUTION (Only Positive, Only if not previously replied)
+                if fb_auto_pilot and parsed_feedbacks:
+                    current_loaded_logs = load_json(FEEDBACK_LOGS_FILE, {})
+                    auto_replied_count = 0
+
+                    for item in parsed_feedbacks:
+                        fid = item["id"]
+                        f_user = item["buyer"]
+                        f_rating = str(item["rating"]).strip()
+
+                        # Check if Positive (Positive score) and NOT already replied
+                        if f_rating.lower() in ["positive", "1"] and fid not in current_loaded_logs:
+                            success, resp_msg = send_rest_auto_reply(
+                                access_token,
+                                fid,
+                                f_user,
+                                reply_message_text
+                            )
+                            if success:
+                                current_loaded_logs[fid] = {
+                                    "buyer": f_user,
+                                    "status": "Auto-Replied (Positive)",
+                                    "time": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                                }
+                                auto_replied_count += 1
+                                time.sleep(0.5)
+
+                    if auto_replied_count > 0:
+                        save_json(FEEDBACK_LOGS_FILE, current_loaded_logs)
+                        st.success(f"⚡ Auto-Pilot: Sent thank-you replies to {auto_replied_count} new positive reviews automatically!")
+
                 st.success(f"✅ Successfully fetched total {len(parsed_feedbacks)} feedbacks from eBay store!")
 
         st.divider()
@@ -1529,13 +1561,22 @@ elif selected_page == "⭐ Feedback Auto-Reply":
             fb_display_rows = []
             for item in session_feedbacks:
                 fid = item["id"]
-                is_replied = "✅ Replied" if fid in current_loaded_logs else "⏳ Pending Reply"
+                score = str(item["rating"]).strip()
+                
+                # Determine status based on rating and logs
+                if fid in current_loaded_logs:
+                    status_badge = "✅ Replied"
+                elif score.lower() not in ["positive", "1"]:
+                    status_badge = "🛡️ Skipped (Negative/Neutral)"
+                else:
+                    status_badge = "⏳ Pending Reply"
+
                 fb_display_rows.append({
                     "Feedback ID": fid,
                     "Buyer": item["buyer"],
-                    "Rating Type": item["rating"],
+                    "Rating Type": score,
                     "Comment": item["text"],
-                    "Status": is_replied
+                    "Status": status_badge
                 })
             st.dataframe(pd.DataFrame(fb_display_rows), use_container_width=True, hide_index=True)
         elif current_loaded_logs:
