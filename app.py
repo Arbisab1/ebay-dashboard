@@ -2332,4 +2332,3 @@ elif "Message Templates" in selected_page:
         st.rerun()
 
 
-Isay apni app.py file mein daal kar save karein aur run karein, ab aapka feedback auto-reply module bilkul perfect kaam karega!
