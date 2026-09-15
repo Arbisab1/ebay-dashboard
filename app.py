@@ -2432,7 +2432,7 @@ elif "Message Templates" in selected_page:
     selected_tpl_edit = st.selectbox(
         "Select Template to Edit:", list(templates.keys()), key="template_edit_select"
     )
-    tpl_body = st.text_input(
+    tpl_body = st.text_area(
         "Template Content:",
         value=templates[selected_tpl_edit],
         height=180,
