@@ -392,11 +392,11 @@ def send_ebay_message(access_token, item_id, buyer_username, body_text):
     )
     return "<Ack>Success</Ack>" in res.text or "<Ack>Warning</Ack>" in res.text
 
-# --- PAGINATED FEEDBACK FETCHING (ALL FEEDBACKS) ---
+# --- FULL PAGINATED FEEDBACK FETCHING (ALL ENTRIES) ---
 def fetch_all_ebay_feedbacks(access_token):
     all_parsed_feedbacks = []
     page_number = 1
-    max_pages = 20  # Fetch up to 4000 feedbacks safely
+    max_pages = 25  # Max pages limit to fetch all reviews safely
 
     headers = {
         "X-EBAY-API-COMPATIBILITY-LEVEL": "967",
@@ -413,8 +413,10 @@ def fetch_all_ebay_feedbacks(access_token):
             <eBayAuthToken>{access_token}</eBayAuthToken>
           </RequesterCredentials>
           <DetailLevel>ReturnAll</DetailLevel>
-          <EntriesPerPage>200</EntriesPerPage>
-          <PageNumber>{page_number}</PageNumber>
+          <Pagination>
+            <EntriesPerPage>200</EntriesPerPage>
+            <PageNumber>{page_number}</PageNumber>
+          </Pagination>
         </GetFeedbackRequest>"""
 
         res = requests.post("https://api.ebay.com/ws/api.dll", data=xml_payload, headers=headers)
@@ -435,7 +437,6 @@ def fetch_all_ebay_feedbacks(access_token):
                 f_score = block.split("<CommentType>")[1].split("</CommentType>")[0]
                 f_text = block.split("<CommentText>")[1].split("</CommentText>")[0]
                 
-                # Prevent duplicates within list
                 if not any(d['id'] == f_id for d in all_parsed_feedbacks):
                     all_parsed_feedbacks.append({
                         "id": f_id,
@@ -2409,3 +2410,5 @@ elif "Message Templates" in selected_page:
         st.success(f"Template '{selected_tpl_edit}' saved successfully!")
         time.sleep(1)
         st.rerun()
+
+
