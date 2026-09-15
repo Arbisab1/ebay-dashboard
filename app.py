@@ -455,24 +455,31 @@ def fetch_all_ebay_feedbacks(access_token):
 
     return all_parsed_feedbacks
 
-def send_rest_auto_reply(oauth_token, feedback_id, recipient_user_id, reply_text):
-    url = "https://api.ebay.com/commerce/feedback/v1/respond_to_feedback"
+# --- TRADING API RESPOND TO FEEDBACK (RELIABLE XML) ---
+def send_xml_feedback_reply(access_token, feedback_id, target_user, reply_text):
+    xml_payload = f"""<?xml version="1.0" encoding="utf-8"?>
+    <RespondToFeedbackRequest xmlns="urn:ebay:apis:eBLBaseComponents">
+      <RequesterCredentials>
+        <eBayAuthToken>{access_token}</eBayAuthToken>
+      </RequesterCredentials>
+      <FeedbackID>{feedback_id}</FeedbackID>
+      <TargetUserID>{target_user}</TargetUserID>
+      <ResponseType>Reply</ResponseType>
+      <ResponseText>{reply_text}</ResponseText>
+    </RespondToFeedbackRequest>"""
+
     headers = {
-        "Authorization": f"Bearer {oauth_token}",
-        "Content-Type": "application/json",
-        "Accept": "application/json"
-    }
-    payload = {
-        "feedbackId": feedback_id,
-        "recipientUserId": recipient_user_id,
-        "responseText": reply_text,
-        "responseType": "REPLY"
+        "X-EBAY-API-COMPATIBILITY-LEVEL": "967",
+        "X-EBAY-API-CALL-NAME": "RespondToFeedback",
+        "X-EBAY-API-SITEID": "0",
+        "X-EBAY-API-IAF-TOKEN": access_token,
+        "Content-Type": "text/xml",
     }
     try:
-        response = requests.post(url, headers=headers, json=payload)
-        if response.status_code in [200, 204]:
+        res = requests.post("https://api.ebay.com/ws/api.dll", data=xml_payload, headers=headers)
+        if "<Ack>Success</Ack>" in res.text or "<Ack>Warning</Ack>" in res.text:
             return True, "Success"
-        return False, f"Status {response.status_code}: {response.text}"
+        return False, res.text
     except Exception as e:
         return False, str(e)
 
@@ -1531,7 +1538,7 @@ elif selected_page == "⭐ Feedback Auto-Reply":
                         f_rating = str(item["rating"]).strip()
 
                         if f_rating.lower() in ["positive", "1"] and fid not in current_loaded_logs:
-                            success, resp_msg = send_rest_auto_reply(
+                            success, resp_msg = send_xml_feedback_reply(
                                 access_token,
                                 fid,
                                 f_user,
@@ -1615,7 +1622,7 @@ elif selected_page == "⭐ Feedback Auto-Reply":
                         else:
                             if st.button(f"✉️ Send Reply to {f_buyer}", key=f"btn_send_fb_{fid}", type="primary"):
                                 access_token = accessible_stores[active_fb_store]["access_token"]
-                                success, resp_msg = send_rest_auto_reply(
+                                success, resp_msg = send_xml_feedback_reply(
                                     access_token,
                                     fid,
                                     f_buyer,
