@@ -470,7 +470,9 @@ def send_rest_auto_reply(oauth_token, feedback_id, recipient_user_id, reply_text
     }
     try:
         response = requests.post(url, headers=headers, json=payload)
-        return response.status_code == 200, response.text
+        if response.status_code in [200, 204]:
+            return True, "Success"
+        return False, f"Status {response.status_code}: {response.text}"
     except Exception as e:
         return False, str(e)
 
@@ -1471,7 +1473,7 @@ if "Orders &" in selected_page:
             st.info("No orders found for the selected store and date range.")
 
 # ==========================================================
-# 1.5 DEDICATED FEEDBACK AUTO-REPLY HUB (INTERACTIVE FEEDBACK LIST)
+# 1.5 DEDICATED FEEDBACK AUTO-REPLY HUB (METRIC BOX & FIX)
 # ==========================================================
 elif selected_page == "⭐ Feedback Auto-Reply":
     st.markdown(
@@ -1518,7 +1520,7 @@ elif selected_page == "⭐ Feedback Auto-Reply":
                 parsed_feedbacks = fetch_all_ebay_feedbacks(access_token)
                 st.session_state[f"parsed_fb_{active_fb_store}"] = parsed_feedbacks
 
-                # AUTO-PILOT EXECUTION (Only Positive, Only if not previously replied)
+                # AUTO-PILOT EXECUTION
                 if fb_auto_pilot and parsed_feedbacks:
                     current_loaded_logs = load_json(FEEDBACK_LOGS_FILE, {})
                     auto_replied_count = 0
@@ -1551,10 +1553,22 @@ elif selected_page == "⭐ Feedback Auto-Reply":
                 st.success(f"✅ Successfully fetched total {len(parsed_feedbacks)} feedbacks from eBay store!")
 
         st.divider()
-        st.markdown("### 📋 Feedbacks List & Interactive Reply Actions")
         
         session_feedbacks = st.session_state.get(f"parsed_fb_{active_fb_store}", [])
         current_loaded_logs = load_json(FEEDBACK_LOGS_FILE, {})
+
+        # --- METRIC BOX FOR FEEDBACK COUNT ---
+        total_fetched_count = len(session_feedbacks)
+        replied_count = sum(1 for item in session_feedbacks if item["id"] in current_loaded_logs)
+        pending_count = total_fetched_count - replied_count
+
+        f_m1, f_m2, f_m3 = st.columns(3)
+        f_m1.metric("⭐ Total Feedbacks Fetched", total_fetched_count)
+        f_m2.metric("✅ Successfully Replied", replied_count)
+        f_m3.metric("⏳ Pending / Eligible", pending_count)
+        st.divider()
+
+        st.markdown("### 📋 Feedbacks List & Interactive Reply Actions")
 
         if session_feedbacks:
             for item in session_feedbacks:
