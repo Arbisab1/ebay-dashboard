@@ -1520,41 +1520,6 @@ elif selected_page == "⭐ Feedback Auto-Reply":
                 st.success(f"✅ Successfully fetched total {len(parsed_feedbacks)} feedbacks from eBay store!")
 
         st.divider()
-        st.markdown("#### 💬 Manual Test & Send Feedback Reply")
-        c_fb_inp1, c_fb_inp2 = st.columns(2)
-        with c_fb_inp1:
-            manual_feedback_id = st.text_input("Feedback ID:", placeholder="e.g. 85XXXX20", key="manual_fb_id")
-        with c_fb_inp2:
-            manual_buyer_id = st.text_input("Recipient Username:", placeholder="e.g. buyer123", key="manual_fb_buyer")
-
-        if st.button("🚀 Send Manual Reply via REST API", type="primary", key="send_manual_fb_btn"):
-            if not manual_feedback_id or not manual_buyer_id:
-                st.warning("Please fill in both Feedback ID and Recipient Username.")
-            else:
-                access_token = tokens["access_token"]
-                current_loaded_logs = load_json(FEEDBACK_LOGS_FILE, {})
-                if manual_feedback_id in current_loaded_logs:
-                    st.warning(f"⚠️ Feedback ID {manual_feedback_id} has already been replied to. Duplicate prevented!")
-                else:
-                    with st.spinner("Sending reply via eBay REST API..."):
-                        success, resp_msg = send_rest_auto_reply(
-                            access_token,
-                            manual_feedback_id,
-                            manual_buyer_id,
-                            reply_message_text
-                        )
-                        if success:
-                            current_loaded_logs[manual_feedback_id] = {
-                                "buyer": manual_buyer_id,
-                                "status": "Replied Successfully",
-                                "time": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                            }
-                            save_json(FEEDBACK_LOGS_FILE, current_loaded_logs)
-                            st.success(f"✅ Successfully sent reply to {manual_buyer_id}!")
-                        else:
-                            st.error(f"❌ Failed to reply. Details: {resp_msg}")
-
-        st.divider()
         st.markdown("### 📋 Complete Store Feedbacks & History")
         
         session_feedbacks = st.session_state.get(f"parsed_fb_{active_fb_store}", [])
