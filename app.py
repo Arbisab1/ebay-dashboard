@@ -854,7 +854,7 @@ if "signup_temp_data" not in st.session_state:
 # 1. AUTHENTICATION & VERIFICATION ENGINE
 # ==========================================================
 if not st.session_state.logged_in:
-    c1, c2, c3 = st.columns()
+    c1, c2, c3 = st.columns(3)
     with c2:
         st.markdown(
             """
@@ -906,7 +906,7 @@ if not st.session_state.logged_in:
                     else:
                         st.error("Invalid Username or Password.")
 
-            col_btn_fp, _ = st.columns()
+            col_btn_fp, _ = st.columns(2)
             with col_btn_fp:
                 if st.button("❓ Forgot Password?", type="secondary", use_container_width=True):
                     st.session_state.auth_mode = "forgot"
@@ -961,7 +961,7 @@ if not st.session_state.logged_in:
                 st.info(f"Verification code sent to **{temp_info['email']}**.")
                 reg_otp_input = st.text_input("Enter 6-Digit OTP:", max_chars=6, key="reg_otp_in").strip()
 
-                c_reg1, c_reg2, c_reg3 = st.columns()
+                c_reg1, c_reg2, c_reg3 = st.columns(3)
                 with c_reg1:
                     if st.button("✅ Verify & Finish", type="primary", use_container_width=True):
                         if reg_otp_input == st.session_state.otp_code:
@@ -1030,7 +1030,8 @@ if not st.session_state.logged_in:
                         
                         ok, em = send_otp_email(target_email, code, purpose="Password Reset")
                         if ok:
-                            st.success(f"OTP sent to {target_email[:3]}***@{target_email.split('@')}!")
+                            domain_part = target_email.split('@') if '@' in target_email else 'domain.com'
+                            st.success(f"OTP sent to {target_email[:3]}***@{domain_part}!")
                         else:
                             st.error(f"Error: {em}")
                             
@@ -1043,7 +1044,7 @@ if not st.session_state.logged_in:
                 st.info(f"Verification code generated for **{st.session_state.otp_target_user}**.")
                 entered_otp = st.text_input("Enter 6-digit OTP Code:", max_chars=6, key="otp_in").strip()
                 
-                c_ov1, c_ov2, c_ov3 = st.columns()
+                c_ov1, c_ov2, c_ov3 = st.columns(3)
                 with c_ov1:
                     if st.button("✅ Verify OTP", type="primary", use_container_width=True):
                         if entered_otp == st.session_state.otp_code:
@@ -1277,7 +1278,7 @@ if "Orders &" in selected_page:
         
         fetch_all_orders_toggle = st.checkbox("📋 Fetch ALL Orders (No Date Limit)", value=False, key="all_orders_toggle")
         
-        col_date1, col_date2, col_sync_btn = st.columns()
+        col_date1, col_date2, col_sync_btn = st.columns(3)
         
         with col_date1:
             default_start = (datetime.now() - timedelta(days=30)).date()
@@ -1403,7 +1404,7 @@ if "Orders &" in selected_page:
             dc4.metric("📈 Today's Sales", f"{currency_symbol_live} {daily_sales_revenue:,.2f}")
             st.divider()
 
-            col_filter, col_template = st.columns()
+            col_filter, col_template = st.columns(2)
 
             filter_options = [
                 "📋 All Orders",
@@ -1570,7 +1571,7 @@ if "Orders &" in selected_page:
                 with st.expander(
                     f"Order #{order_id} | Buyer: {buyer} | {clean_badge} | {sent_status_text}"
                 ):
-                    c_det, c_act = st.columns()
+                    c_det, c_act = st.columns(2)
                     with c_det:
                         st.write(f"**Item:** {item_title}")
                         st.write(f"**Item ID:** `{item_id}`")
@@ -1740,7 +1741,7 @@ elif selected_page == "⭐ Feedback Auto-Reply":
                     badge_text = "⏳ Pending Reply"
 
                 with st.expander(f"Feedback ID: {fid} | Buyer: {f_buyer} | Rating: {f_score} | {badge_text}"):
-                    c_det, c_act = st.columns()
+                    c_det, c_act = st.columns(2)
                     with c_det:
                         st.write(f"**Buyer Username:** `{f_buyer}`")
                         st.write(f"**Rating Type:** `{f_score}`")
@@ -1805,13 +1806,13 @@ elif selected_page == "🔍 Product Hunting & Research":
 
     with st.container():
         st.markdown("#### 🔎 Research Product Niche / Keyword")
-        r_col1, r_col2, r_col3, r_col4 = st.columns()
+        r_col1, r_col2, r_col3, r_col4 = st.columns(4)
 
         with r_col1:
             search_query = st.text_input("Enter Product Title or Keyword:", placeholder="e.g. Wireless Earbuds, iPhone 14 Case", key="hunt_search_input")
         with r_col2:
             market_choice = st.selectbox("Target Market:", ["eBay US (EBAY_US)", "eBay UK (EBAY_GB)", "eBay Germany (EBAY_DE)", "eBay Australia (EBAY_AU)"], key="hunt_market_select")
-            market_id = market_choice.split("(").replace(")", "").strip()
+            market_id = market_choice.split("(").replace(")", "").strip() if "(" in market_choice else "EBAY_US"
         with r_col3:
             cond_choice = st.selectbox("Item Condition:", ["ALL", "New", "Used"], key="hunt_cond_select")
         with r_col4:
@@ -1819,7 +1820,7 @@ elif selected_page == "🔍 Product Hunting & Research":
             sort_map = {"Newly Listed": "newlyListed", "Price: Low to High": "price_asc", "Price: High to Low": "price_desc"}
             active_sort = sort_map[sort_choice]
 
-        c_hunt_btn, _ = st.columns([1.5, 4])
+        c_hunt_btn, _ = st.columns()
         with c_hunt_btn:
             hunt_submit = st.button("🚀 Analyze & Audit Competitors", type="primary", use_container_width=True, key="hunt_submit_btn")
 
@@ -1908,7 +1909,7 @@ elif selected_page == "🔍 Product Hunting & Research":
 
             st.divider()
 
-            f_col1, f_col2 = st.columns()
+            f_col1, f_col2 = st.columns(2)
             with f_col1:
                 violation_filter = st.selectbox(
                     "Filter Competitor Listings by Compliance:",
@@ -1973,14 +1974,14 @@ elif selected_page == "⚠️ Listing Violations & Policy":
         )
         tokens = accessible_stores[active_violation_store]
 
-        c_v1, c_v2 = st.columns()
+        c_v1, c_v2 = st.columns(2)
         with c_v1:
             market_violation_choice = st.selectbox(
                 "Target Marketplace:",
                 ["eBay US (EBAY_US)", "eBay UK (EBAY_GB)", "eBay Germany (EBAY_DE)", "eBay Australia (EBAY_AU)"],
                 key="market_violation_select"
             )
-            v_market_id = market_violation_choice.split("(").replace(")", "").strip()
+            v_market_id = market_violation_choice.split("(").replace(")", "").strip() if "(" in market_violation_choice else "EBAY_US"
         with c_v2:
             st.write("")
             scan_violations_btn = st.button("🔍 Scan Store Policy Health", type="primary", use_container_width=True, key="scan_v_btn")
@@ -2061,7 +2062,7 @@ elif selected_page == "⚠️ Listing Violations & Policy":
 
             df_v = pd.DataFrame(df_v_display).drop(columns=["RawSeverity"], errors="ignore")
 
-            vc_title, vc_dl = st.columns()
+            vc_title, vc_dl = st.columns(2)
             with vc_title:
                 st.markdown(f"#### 📋 Active Violations Report ({len(df_v_display)} issues found)")
             with vc_dl:
@@ -2115,7 +2116,7 @@ elif selected_page == "📈 Sales & Revenue Reports":
         
         fetch_all_sales_toggle = st.checkbox("📋 Fetch All-Time Sales (No Date Limit)", value=False, key="all_sales_toggle")
         
-        c_sd1, c_sd2, c_sbtn = st.columns()
+        c_sd1, c_sd2, c_sbtn = st.columns(3)
         with c_sd1:
             default_start = (datetime.now() - timedelta(days=30)).date()
             sales_start_date = st.date_input("From Date:", value=default_start, disabled=fetch_all_sales_toggle, key="sales_start_date")
@@ -2251,15 +2252,14 @@ elif selected_page == "📈 Sales & Revenue Reports":
             else:
                 df_display = pd.DataFrame(columns=expected_cols)
 
-            c_head, c_dl = st.columns()
+            c_head, c_dl = st.columns(2)
             with c_head:
                 st.markdown(f"### 📋 {chosen_segment} Sheet ({len(filtered_rows)} records)")
             with c_dl:
                 csv_buffer = io.StringIO()
                 df_display.to_csv(csv_buffer, index=False)
-                clean_seg_filename = chosen_segment.split(" ").lower() if len(chosen_segment.split(" ")) > 1 else "all"
                 st.download_button(
-                    label=f"📥 Download Report CSV",
+                    label="📥 Download Report CSV",
                     data=csv_buffer.getvalue(),
                     file_name=f"eBay_Report_{active_sales_store}_{datetime.now().strftime('%Y%m%d')}.csv",
                     mime="text/csv",
@@ -2383,7 +2383,7 @@ elif (
     
     user_current_stores = [s for s in stores.keys() if st.session_state.role == "admin" or s in user_data_obj.get("assigned_stores", [])]
 
-    c_link, c_manage = st.columns()
+    c_link, c_manage = st.columns(2)
 
     with c_link:
         st.markdown("### 🔗 Authorize Account")
@@ -2553,7 +2553,7 @@ elif (
                         if st.checkbox("➕ Connect eBay Store", value=("Connect eBay Store" in curr_allowed), key=f"chk_store_{u}"):
                             new_selected_modules.append("Connect eBay Store")
 
-                    c_save_mod, c_del_user = st.columns()
+                    c_save_mod, c_del_user = st.columns(2)
                     with c_save_mod:
                         if st.button("💾 Save Client Services", key=f"btn_save_mod_{u}", type="primary"):
                             users_db[u]["allowed_modules"] = new_selected_modules
@@ -2607,5 +2607,3 @@ elif "Message Templates" in selected_page:
         st.success(f"Template '{selected_tpl_edit}' saved successfully!")
         time.sleep(1)
         st.rerun()
-
-
