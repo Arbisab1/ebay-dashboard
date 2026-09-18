@@ -8,6 +8,7 @@ import os
 import random
 import re
 import smtplib
+import sqlite3
 import time
 from urllib.parse import parse_qs, unquote, urlparse
 import pandas as pd
@@ -38,12 +39,7 @@ HARDCODED_APP_PASSWORD = "vmxc wwbs nuzz yhbc"
 SMTP_EMAIL = st.secrets.get("SMTP_EMAIL", os.getenv("SMTP_EMAIL", HARDCODED_GMAIL)).strip()
 SMTP_PASSWORD = st.secrets.get("SMTP_PASSWORD", os.getenv("SMTP_PASSWORD", HARDCODED_APP_PASSWORD)).strip()
 
-STORES_FILE = "connected_stores.json"
-USERS_FILE = "users_db.json"
-TEMPLATES_FILE = "custom_templates.json"
-LOGS_FILE = "message_logs.json"
-NOTES_FILE = "order_notes.json"
-FEEDBACK_LOGS_FILE = "feedback_logs.json"
+DB_FILE = "ebay_portal.db"
 
 AUTH_URL = (
     f"https://auth.ebay.com/oauth2/authorize?client_id={CLIENT_ID}&response_type=code&redirect_uri={RUNAME}&"
@@ -227,28 +223,182 @@ ALL_MODULES = [
     "Connect eBay Store"
 ]
 
-# --- PERSISTENCE & EMAIL ENGINE ---
+# --- SQLITE PERSISTENCE ENGINE ---
+def get_db_connection():
+    conn = sqlite3.connect(DB_FILE)
+    conn.row_factory = sqlite3.Row
+    return conn
+
+def init_db():
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS stores (
+            store_name TEXT PRIMARY KEY,
+            access_token TEXT,
+            refresh_token TEXT
+        )
+    """)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS users (
+            username TEXT PRIMARY KEY,
+            email TEXT,
+            password TEXT,
+            role TEXT,
+            assigned_stores TEXT,
+            max_stores INTEGER,
+            allowed_modules TEXT
+        )
+    """)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS kv_store (
+            key TEXT PRIMARY KEY,
+            value TEXT
+        )
+    """)
+    conn.commit()
+    conn.close()
+
+init_db()
+
 def hash_pass(password):
     return hashlib.sha256(str(password).strip().encode()).hexdigest()
 
-def load_json(filepath, default):
-    if os.path.exists(filepath):
+def db_load_stores():
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT store_name, access_token, refresh_token FROM stores")
+    rows = cursor.fetchall()
+    conn.close()
+    res = {}
+    for r in rows:
+        res[r["store_name"]] = {"access_token": r["access_token"], "refresh_token": r["refresh_token"]}
+    return res
+
+def db_save_store(store_name, access_token, refresh_token):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+        INSERT INTO stores (store_name, access_token, refresh_token)
+        VALUES (?, ?, ?)
+        ON CONFLICT(store_name) DO UPDATE SET
+            access_token=excluded.access_token,
+            refresh_token=excluded.refresh_token
+    """, (store_name, access_token, refresh_token))
+    conn.commit()
+    conn.close()
+
+def db_delete_store(store_name):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM stores WHERE store_name = ?", (store_name,))
+    conn.commit()
+    conn.close()
+
+def db_load_users():
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT username, email, password, role, assigned_stores, max_stores, allowed_modules FROM users")
+    rows = cursor.fetchall()
+    conn.close()
+    res = {}
+    for r in rows:
+        res[r["username"]] = {
+            "email": r["email"] or "",
+            "password": r["password"] or "",
+            "role": r["role"] or "client",
+            "assigned_stores": json.loads(r["assigned_stores"] or "[]"),
+            "max_stores": int(r["max_stores"] or 3),
+            "allowed_modules": json.loads(r["allowed_modules"] or json.dumps(ALL_MODULES))
+        }
+    if not res:
+        # seed default admin if empty
+        default_admin = {
+            "email": "admin@ebayportal.com",
+            "password": hash_pass("admin123"),
+            "role": "admin",
+            "assigned_stores": ["ALL"],
+            "max_stores": 999,
+            "allowed_modules": ALL_MODULES
+        }
+        db_save_user("admin", default_admin)
+        res["admin"] = default_admin
+    return res
+
+def db_save_user(username, data):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+        INSERT INTO users (username, email, password, role, assigned_stores, max_stores, allowed_modules)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(username) DO UPDATE SET
+            email=excluded.email,
+            password=excluded.password,
+            role=excluded.role,
+            assigned_stores=excluded.assigned_stores,
+            max_stores=excluded.max_stores,
+            allowed_modules=excluded.allowed_modules
+    """, (
+        username,
+        data.get("email", ""),
+        data.get("password", ""),
+        data.get("role", "client"),
+        json.dumps(data.get("assigned_stores", [])),
+        int(data.get("max_stores", 3)),
+        json.dumps(data.get("allowed_modules", ALL_MODULES))
+    ))
+    conn.commit()
+    conn.close()
+
+def db_delete_user(username):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM users WHERE username = ?", (username,))
+    conn.commit()
+    conn.close()
+
+def db_load_kv(key, default):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT value FROM kv_store WHERE key = ?", (key,))
+    row = cursor.fetchone()
+    conn.close()
+    if row and row["value"]:
         try:
-            with open(filepath, "r") as f:
-                data = json.load(f)
-                if isinstance(default, dict):
-                    for k, v in default.items():
-                        if k not in data:
-                            data[k] = v
-                return data
+            return json.loads(row["value"])
         except Exception:
             return default
     return default
 
-def save_json(filepath, data):
-    with open(filepath, "w") as f:
-        json.dump(data, f, indent=4)
+def db_save_kv(key, data):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+        INSERT INTO kv_store (key, value)
+        VALUES (?, ?)
+        ON CONFLICT(key) DO UPDATE SET value=excluded.value
+    """, (key, json.dumps(data)))
+    conn.commit()
+    conn.close()
 
+# --- INITIALIZE DATABASE STATE ---
+stores = db_load_stores()
+users_db = db_load_users()
+templates = db_load_kv("templates_kv", DEFAULT_TEMPLATES)
+logs = db_load_kv("logs_kv", {})
+order_notes = db_load_kv("order_notes_kv", {})
+feedback_logs = db_load_kv("feedback_logs_kv", {})
+
+# Compatibility wrappers for legacy JSON save calls
+def save_json(filepath, data):
+    if filepath == STORES_FILE_DUMMY:
+        pass
+    elif filepath == "connected_stores.json":
+        pass
+
+STORES_FILE_DUMMY = "connected_stores.json"
+
+# --- EMAIL ENGINE ---
 def send_otp_email(receiver_email, otp_code, purpose="Verification"):
     if not SMTP_EMAIL or not SMTP_PASSWORD:
         return False, "SMTP_NOT_SET"
@@ -278,7 +428,7 @@ def clean_auth_code(input_str):
         params = parse_qs(parsed.query)
         if "code" in params:
             return params["code"][0]
-        raw = raw.split("code=")[1].split("&")[0]
+        raw = raw.split("code=").split("&")[0]
     return unquote(raw)
 
 def exchange_code_for_tokens(auth_code):
@@ -392,11 +542,11 @@ def send_ebay_message(access_token, item_id, buyer_username, body_text):
     )
     return "<Ack>Success</Ack>" in res.text or "<Ack>Warning</Ack>" in res.text
 
-# --- FULL PAGINATED FEEDBACK FETCHING (ALL ENTRIES) ---
+# --- EXTENDED PAGINATED FEEDBACK FETCHING (UP TO 10,000 REVIEWS) ---
 def fetch_all_ebay_feedbacks(access_token):
     all_parsed_feedbacks = []
     page_number = 1
-    max_pages = 25  # Max pages limit to fetch all reviews safely
+    max_pages = 50
 
     headers = {
         "X-EBAY-API-COMPATIBILITY-LEVEL": "967",
@@ -432,10 +582,10 @@ def fetch_all_ebay_feedbacks(access_token):
         page_count = 0
         for block in feedback_blocks[1:]:
             try:
-                f_id = block.split("<FeedbackID>")[1].split("</FeedbackID>")[0]
-                f_user = block.split("<CommentingUser>")[1].split("</CommentingUser>")[0]
-                f_score = block.split("<CommentType>")[1].split("</CommentType>")[0]
-                f_text = block.split("<CommentText>")[1].split("</CommentText>")[0]
+                f_id = block.split("<FeedbackID>").split("</FeedbackID>")[0]
+                f_user = block.split("<CommentingUser>").split("</CommentingUser>")[0]
+                f_score = block.split("<CommentType>").split("</CommentType>")[0]
+                f_text = block.split("<CommentText>").split("</CommentText>")[0]
                 
                 if not any(d['id'] == f_id for d in all_parsed_feedbacks):
                     all_parsed_feedbacks.append({
@@ -673,13 +823,13 @@ def search_ebay_market(keyword, marketplace_id="EBAY_US", limit=50, sort_order="
     else:
         return None, f"Error {res.status_code}: {res.text}"
 
-# --- INITIALIZE DATABASE ---
-stores = load_json(STORES_FILE, {})
-users_db = load_json(USERS_FILE, {})
-templates = load_json(TEMPLATES_FILE, DEFAULT_TEMPLATES)
-logs = load_json(LOGS_FILE, {})
-order_notes = load_json(NOTES_FILE, {})
-feedback_logs = load_json(FEEDBACK_LOGS_FILE, {})
+# --- REFRESH IN-MEMORY STATE FROM DB ---
+stores = db_load_stores()
+users_db = db_load_users()
+templates = db_load_kv("templates_kv", DEFAULT_TEMPLATES)
+logs = db_load_kv("logs_kv", {})
+order_notes = db_load_kv("order_notes_kv", {})
+feedback_logs = db_load_kv("feedback_logs_kv", {})
 
 # --- STRICT SECURE SESSION STATE (NO URL EXPOSURE) ---
 if "logged_in" not in st.session_state:
@@ -711,7 +861,7 @@ if "signup_temp_data" not in st.session_state:
 # 1. AUTHENTICATION & VERIFICATION ENGINE
 # ==========================================================
 if not st.session_state.logged_in:
-    c1, c2, c3 = st.columns([1, 1.4, 1])
+    c1, c2, c3 = st.columns()
     with c2:
         st.markdown(
             """
@@ -724,6 +874,7 @@ if not st.session_state.logged_in:
             unsafe_allow_html=True,
         )
 
+        users_db = db_load_users()
         # MODE 1: SIGN IN
         if st.session_state.auth_mode == "signin":
             with st.form("signin_form"):
@@ -762,7 +913,7 @@ if not st.session_state.logged_in:
                     else:
                         st.error("Invalid Username or Password.")
 
-            col_btn_fp, _ = st.columns([1.5, 1])
+            col_btn_fp, _ = st.columns()
             with col_btn_fp:
                 if st.button("❓ Forgot Password?", type="secondary", use_container_width=True):
                     st.session_state.auth_mode = "forgot"
@@ -817,11 +968,11 @@ if not st.session_state.logged_in:
                 st.info(f"Verification code sent to **{temp_info['email']}**.")
                 reg_otp_input = st.text_input("Enter 6-Digit OTP:", max_chars=6, key="reg_otp_in").strip()
 
-                c_reg1, c_reg2, c_reg3 = st.columns([1.5, 1.2, 1])
+                c_reg1, c_reg2, c_reg3 = st.columns()
                 with c_reg1:
                     if st.button("✅ Verify & Finish", type="primary", use_container_width=True):
                         if reg_otp_input == st.session_state.otp_code:
-                            users_db[temp_info["username"]] = {
+                            user_payload = {
                                 "email": temp_info["email"],
                                 "password": temp_info["password"],
                                 "role": temp_info["role"],
@@ -829,7 +980,7 @@ if not st.session_state.logged_in:
                                 "max_stores": temp_info.get("max_stores", 3),
                                 "allowed_modules": temp_info.get("allowed_modules", ALL_MODULES),
                             }
-                            save_json(USERS_FILE, users_db)
+                            db_save_user(temp_info["username"], user_payload)
 
                             st.session_state.logged_in = True
                             st.session_state.username = temp_info["username"]
@@ -886,7 +1037,7 @@ if not st.session_state.logged_in:
                         
                         ok, em = send_otp_email(target_email, code, purpose="Password Reset")
                         if ok:
-                            st.success(f"OTP sent to {target_email[:3]}***@{target_email.split('@')[1]}!")
+                            st.success(f"OTP sent to {target_email[:3]}***@{target_email.split('@')}!")
                         else:
                             st.error(f"Error: {em}")
                             
@@ -899,7 +1050,7 @@ if not st.session_state.logged_in:
                 st.info(f"Verification code generated for **{st.session_state.otp_target_user}**.")
                 entered_otp = st.text_input("Enter 6-digit OTP Code:", max_chars=6, key="otp_in").strip()
                 
-                c_ov1, c_ov2, c_ov3 = st.columns([1.5, 1.2, 1])
+                c_ov1, c_ov2, c_ov3 = st.columns()
                 with c_ov1:
                     if st.button("✅ Verify OTP", type="primary", use_container_width=True):
                         if entered_otp == st.session_state.otp_code:
@@ -934,7 +1085,7 @@ if not st.session_state.logged_in:
                     if new_reset_pass and new_reset_pass == confirm_reset_pass:
                         u_target = st.session_state.otp_target_user
                         users_db[u_target]["password"] = hash_pass(new_reset_pass)
-                        save_json(USERS_FILE, users_db)
+                        db_save_user(u_target, users_db[u_target])
                         
                         st.success("Password changed! Please log in.")
                         st.session_state.otp_code = None
@@ -969,6 +1120,9 @@ if not st.session_state.logged_in:
 # ==========================================================
 # 2. LOGGED IN DASHBOARD
 # ==========================================================
+stores = db_load_stores()
+users_db = db_load_users()
+
 if st.session_state.role == "admin":
     accessible_stores = stores
 else:
@@ -1032,7 +1186,7 @@ with st.sidebar:
                             "allowed_modules": st.session_state.allowed_modules
                         }
                     users_db[u_key]["password"] = hash_pass(n_p)
-                    save_json(USERS_FILE, users_db)
+                    db_save_user(u_key, users_db[u_key])
                     st.success("Password Updated Successfully!")
                     time.sleep(1)
                     st.rerun()
@@ -1130,7 +1284,7 @@ if "Orders &" in selected_page:
         
         fetch_all_orders_toggle = st.checkbox("📋 Fetch ALL Orders (No Date Limit)", value=False, key="all_orders_toggle")
         
-        col_date1, col_date2, col_sync_btn = st.columns([2, 2, 1.5])
+        col_date1, col_date2, col_sync_btn = st.columns()
         
         with col_date1:
             default_start = (datetime.now() - timedelta(days=30)).date()
@@ -1174,7 +1328,7 @@ if "Orders &" in selected_page:
                         new_t = get_fresh_token(tokens["refresh_token"])
                         if new_t:
                             stores[active_store_name]["access_token"] = new_t
-                            save_json(STORES_FILE, stores)
+                            db_save_store(active_store_name, new_t, tokens["refresh_token"])
                             access_token = new_t
 
                     if manual_sync:
@@ -1217,7 +1371,7 @@ if "Orders &" in selected_page:
                                     except Exception:
                                         pass
                             if auto_sent_count > 0:
-                                save_json(LOGS_FILE, logs)
+                                db_save_kv("logs_kv", logs)
                                 st.success(f"⚡ Auto-Pilot: Sent welcome message to {auto_sent_count} new orders automatically!")
                         
                         st.success(f"Synced {len(fetched_orders)} orders!")
@@ -1256,7 +1410,7 @@ if "Orders &" in selected_page:
             dc4.metric("📈 Today's Sales", f"{currency_symbol_live} {daily_sales_revenue:,.2f}")
             st.divider()
 
-            col_filter, col_template = st.columns([2, 2])
+            col_filter, col_template = st.columns()
 
             filter_options = [
                 "📋 All Orders",
@@ -1375,7 +1529,7 @@ if "Orders &" in selected_page:
                     time.sleep(0.3)
                     progress_bar.progress((i + 1) / len(display_orders))
 
-                save_json(LOGS_FILE, logs)
+                db_save_kv("logs_kv", logs)
                 st.success(f"✅ {sent_count} new messages dispatched! (Already messaged orders were safely skipped).")
                 time.sleep(1)
                 st.rerun()
@@ -1423,7 +1577,7 @@ if "Orders &" in selected_page:
                 with st.expander(
                     f"Order #{order_id} | Buyer: {buyer} | {clean_badge} | {sent_status_text}"
                 ):
-                    c_det, c_act = st.columns([1.5, 2])
+                    c_det, c_act = st.columns()
                     with c_det:
                         st.write(f"**Item:** {item_title}")
                         st.write(f"**Item ID:** `{item_id}`")
@@ -1432,7 +1586,7 @@ if "Orders &" in selected_page:
                         new_s_note = st.text_input("Seller Note:", value=current_seller_note, key=f"snote_{order_id}")
                         if st.button("💾 Save Seller Note", key=f"save_snote_{order_id}", type="secondary"):
                             order_notes[order_id] = new_s_note
-                            save_json(NOTES_FILE, order_notes)
+                            db_save_kv("order_notes_kv", order_notes)
                             st.success("Seller note saved!")
                             time.sleep(0.5)
                             st.rerun()
@@ -1469,7 +1623,7 @@ if "Orders &" in selected_page:
                                         "status": "Sent",
                                         "time": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
                                     }
-                                    save_json(LOGS_FILE, logs)
+                                    db_save_kv("logs_kv", logs)
                                     st.success(f"Sent to {buyer}!")
                                     time.sleep(1)
                                     st.rerun()
@@ -1480,7 +1634,7 @@ if "Orders &" in selected_page:
             st.info("No orders found for the selected store and date range.")
 
 # ==========================================================
-# 1.5 DEDICATED FEEDBACK AUTO-REPLY HUB (METRIC BOX & FIX)
+# 1.5 DEDICATED FEEDBACK AUTO-REPLY HUB
 # ==========================================================
 elif selected_page == "⭐ Feedback Auto-Reply":
     st.markdown(
@@ -1520,7 +1674,7 @@ elif selected_page == "⭐ Feedback Auto-Reply":
                 new_t = get_fresh_token(tokens["refresh_token"])
                 if new_t:
                     stores[active_fb_store]["access_token"] = new_t
-                    save_json(STORES_FILE, stores)
+                    db_save_store(active_fb_store, new_t, tokens["refresh_token"])
                     access_token = new_t
 
             with st.spinner("Fetching ALL feedbacks from eBay store (pagination active)..."):
@@ -1529,7 +1683,7 @@ elif selected_page == "⭐ Feedback Auto-Reply":
 
                 # AUTO-PILOT EXECUTION
                 if fb_auto_pilot and parsed_feedbacks:
-                    current_loaded_logs = load_json(FEEDBACK_LOGS_FILE, {})
+                    current_loaded_logs = db_load_kv("feedback_logs_kv", {})
                     auto_replied_count = 0
 
                     for item in parsed_feedbacks:
@@ -1551,10 +1705,10 @@ elif selected_page == "⭐ Feedback Auto-Reply":
                                     "time": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                                 }
                                 auto_replied_count += 1
-                                time.sleep(0.5)
+                                time.sleep(0.3)
 
                     if auto_replied_count > 0:
-                        save_json(FEEDBACK_LOGS_FILE, current_loaded_logs)
+                        db_save_kv("feedback_logs_kv", current_loaded_logs)
                         st.success(f"⚡ Auto-Pilot: Sent thank-you replies to {auto_replied_count} new positive reviews automatically!")
 
                 st.success(f"✅ Successfully fetched total {len(parsed_feedbacks)} feedbacks from eBay store!")
@@ -1562,9 +1716,8 @@ elif selected_page == "⭐ Feedback Auto-Reply":
         st.divider()
         
         session_feedbacks = st.session_state.get(f"parsed_fb_{active_fb_store}", [])
-        current_loaded_logs = load_json(FEEDBACK_LOGS_FILE, {})
+        current_loaded_logs = db_load_kv("feedback_logs_kv", {})
 
-        # --- METRIC BOX FOR FEEDBACK COUNT ---
         total_fetched_count = len(session_feedbacks)
         replied_count = sum(1 for item in session_feedbacks if item["id"] in current_loaded_logs)
         pending_count = total_fetched_count - replied_count
@@ -1595,7 +1748,7 @@ elif selected_page == "⭐ Feedback Auto-Reply":
                     badge_text = "⏳ Pending Reply"
 
                 with st.expander(f"Feedback ID: {fid} | Buyer: {f_buyer} | Rating: {f_score} | {badge_text}"):
-                    c_det, c_act = st.columns([1.5, 2])
+                    c_det, c_act = st.columns()
                     with c_det:
                         st.write(f"**Buyer Username:** `{f_buyer}`")
                         st.write(f"**Rating Type:** `{f_score}`")
@@ -1634,7 +1787,7 @@ elif selected_page == "⭐ Feedback Auto-Reply":
                                         "status": "Manually Replied",
                                         "time": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                                     }
-                                    save_json(FEEDBACK_LOGS_FILE, current_loaded_logs)
+                                    db_save_kv("feedback_logs_kv", current_loaded_logs)
                                     st.success(f"✅ Reply sent successfully to {f_buyer}!")
                                     time.sleep(1)
                                     st.rerun()
@@ -1666,7 +1819,7 @@ elif selected_page == "🔍 Product Hunting & Research":
             search_query = st.text_input("Enter Product Title or Keyword:", placeholder="e.g. Wireless Earbuds, iPhone 14 Case", key="hunt_search_input")
         with r_col2:
             market_choice = st.selectbox("Target Market:", ["eBay US (EBAY_US)", "eBay UK (EBAY_GB)", "eBay Germany (EBAY_DE)", "eBay Australia (EBAY_AU)"], key="hunt_market_select")
-            market_id = market_choice.split("(")[1].replace(")", "").strip()
+            market_id = market_choice.split("(").replace(")", "").strip()
         with r_col3:
             cond_choice = st.selectbox("Item Condition:", ["ALL", "New", "Used"], key="hunt_cond_select")
         with r_col4:
@@ -1763,7 +1916,7 @@ elif selected_page == "🔍 Product Hunting & Research":
 
             st.divider()
 
-            f_col1, f_col2 = st.columns([2, 1.2])
+            f_col1, f_col2 = st.columns()
             with f_col1:
                 violation_filter = st.selectbox(
                     "Filter Competitor Listings by Compliance:",
@@ -1835,7 +1988,7 @@ elif selected_page == "⚠️ Listing Violations & Policy":
                 ["eBay US (EBAY_US)", "eBay UK (EBAY_GB)", "eBay Germany (EBAY_DE)", "eBay Australia (EBAY_AU)"],
                 key="market_violation_select"
             )
-            v_market_id = market_violation_choice.split("(")[1].replace(")", "").strip()
+            v_market_id = market_violation_choice.split("(").replace(")", "").strip()
         with c_v2:
             st.write("")
             scan_violations_btn = st.button("🔍 Scan Store Policy Health", type="primary", use_container_width=True, key="scan_v_btn")
@@ -1852,7 +2005,7 @@ elif selected_page == "⚠️ Listing Violations & Policy":
                     new_t = get_fresh_token(tokens["refresh_token"])
                     if new_t:
                         stores[active_violation_store]["access_token"] = new_t
-                        save_json(STORES_FILE, stores)
+                        db_save_store(active_violation_store, new_t, tokens["refresh_token"])
                         access_token = new_t
 
                 fetched_violations = fetch_ebay_compliance_violations(access_token, v_market_id)
@@ -1916,7 +2069,7 @@ elif selected_page == "⚠️ Listing Violations & Policy":
 
             df_v = pd.DataFrame(df_v_display).drop(columns=["RawSeverity"], errors="ignore")
 
-            vc_title, vc_dl = st.columns([3, 1])
+            vc_title, vc_dl = st.columns()
             with vc_title:
                 st.markdown(f"#### 📋 Active Violations Report ({len(df_v_display)} issues found)")
             with vc_dl:
@@ -1970,7 +2123,7 @@ elif selected_page == "📈 Sales & Revenue Reports":
         
         fetch_all_sales_toggle = st.checkbox("📋 Fetch All-Time Sales (No Date Limit)", value=False, key="all_sales_toggle")
         
-        c_sd1, c_sd2, c_sbtn = st.columns([2, 2, 1.5])
+        c_sd1, c_sd2, c_sbtn = st.columns()
         with c_sd1:
             default_start = (datetime.now() - timedelta(days=30)).date()
             sales_start_date = st.date_input("From Date:", value=default_start, disabled=fetch_all_sales_toggle, key="sales_start_date")
@@ -2002,7 +2155,7 @@ elif selected_page == "📈 Sales & Revenue Reports":
                         new_t = get_fresh_token(tokens["refresh_token"])
                         if new_t:
                             stores[active_sales_store]["access_token"] = new_t
-                            save_json(STORES_FILE, stores)
+                            db_save_store(active_sales_store, new_t, tokens["refresh_token"])
                             access_token = new_t
 
                     if refresh_sales_btn:
@@ -2106,15 +2259,15 @@ elif selected_page == "📈 Sales & Revenue Reports":
             else:
                 df_display = pd.DataFrame(columns=expected_cols)
 
-            c_head, c_dl = st.columns([3, 1])
+            c_head, c_dl = st.columns()
             with c_head:
                 st.markdown(f"### 📋 {chosen_segment} Sheet ({len(filtered_rows)} records)")
             with c_dl:
                 csv_buffer = io.StringIO()
                 df_display.to_csv(csv_buffer, index=False)
-                clean_seg_filename = chosen_segment.split(" ")[1].lower()
+                clean_seg_filename = chosen_segment.split(" ").lower()
                 st.download_button(
-                    label=f"📥 Download {chosen_segment.split(' ')[1]} CSV",
+                    label=f"📥 Download {chosen_segment.split(' ')} CSV",
                     data=csv_buffer.getvalue(),
                     file_name=f"eBay_{clean_seg_filename}_Report_{active_sales_store}_{datetime.now().strftime('%Y%m%d')}.csv",
                     mime="text/csv",
@@ -2238,7 +2391,7 @@ elif (
     
     user_current_stores = [s for s in stores.keys() if st.session_state.role == "admin" or s in user_data_obj.get("assigned_stores", [])]
 
-    c_link, c_manage = st.columns([1.2, 1])
+    c_link, c_manage = st.columns()
 
     with c_link:
         st.markdown("### 🔗 Authorize Account")
@@ -2261,18 +2414,16 @@ elif (
                         status, token_data = exchange_code_for_tokens(final_code)
 
                     if status == 200 and "access_token" in token_data:
-                        stores[store_alias] = {
-                            "access_token": token_data["access_token"],
-                            "refresh_token": token_data.get("refresh_token", ""),
-                        }
-                        save_json(STORES_FILE, stores)
+                        r_token = token_data.get("refresh_token", "")
+                        db_save_store(store_alias, token_data["access_token"], r_token)
+                        stores = db_load_stores()
 
                         if curr_user in users_db:
                             current_list = users_db[curr_user].get("assigned_stores", [])
                             if store_alias not in current_list:
                                 current_list.append(store_alias)
                             users_db[curr_user]["assigned_stores"] = current_list
-                            save_json(USERS_FILE, users_db)
+                            db_save_user(curr_user, users_db[curr_user])
                             st.session_state.assigned_stores = current_list
                         
                         st.cache_data.clear()
@@ -2307,16 +2458,15 @@ elif (
                         key=f"del_store_{s_name}",
                         type="secondary",
                     ):
-                        if s_name in stores:
-                            del stores[s_name]
-                            save_json(STORES_FILE, stores)
+                        db_delete_store(s_name)
+                        stores = db_load_stores()
                         
                         if curr_user in users_db:
                             cur_assigned = users_db[curr_user].get("assigned_stores", [])
                             if s_name in cur_assigned:
                                 cur_assigned.remove(s_name)
                                 users_db[curr_user]["assigned_stores"] = cur_assigned
-                                save_json(USERS_FILE, users_db)
+                                db_save_user(curr_user, users_db[curr_user])
                                 st.session_state.assigned_stores = cur_assigned
 
                         st.cache_data.clear()
@@ -2369,7 +2519,7 @@ elif (
                     if st.button("💾 Update Email", key=f"btn_save_email_{u}", type="primary"):
                         if "@" in new_email_input and "." in new_email_input:
                             users_db[u]["email"] = new_email_input.strip().lower()
-                            save_json(USERS_FILE, users_db)
+                            db_save_user(u, users_db[u])
                             st.success(f"Email successfully updated for {u}!")
                             time.sleep(1)
                             st.rerun()
@@ -2382,7 +2532,7 @@ elif (
                     
                     if st.button("💾 Save Store Limit", key=f"btn_save_limit_{u}", type="primary"):
                         users_db[u]["max_stores"] = int(new_max_limit)
-                        save_json(USERS_FILE, users_db)
+                        db_save_user(u, users_db[u])
                         st.success(f"Max store limit set to {new_max_limit} for {u}!")
                         time.sleep(1)
                         st.rerun()
@@ -2411,19 +2561,18 @@ elif (
                         if st.checkbox("➕ Connect eBay Store", value=("Connect eBay Store" in curr_allowed), key=f"chk_store_{u}"):
                             new_selected_modules.append("Connect eBay Store")
 
-                    c_save_mod, c_del_user = st.columns([2, 1])
+                    c_save_mod, c_del_user = st.columns()
                     with c_save_mod:
                         if st.button("💾 Save Client Services", key=f"btn_save_mod_{u}", type="primary"):
                             users_db[u]["allowed_modules"] = new_selected_modules
-                            save_json(USERS_FILE, users_db)
+                            db_save_user(u, users_db[u])
                             st.success(f"Access updated for {u}!")
                             time.sleep(1)
                             st.rerun()
 
                     with c_del_user:
                         if st.button(f"🗑️ Delete Account", key=f"del_client_{u}", type="secondary"):
-                            del users_db[u]
-                            save_json(USERS_FILE, users_db)
+                            db_delete_user(u)
                             st.success(f"Client '{u}' removed!")
                             time.sleep(1)
                             st.rerun()
@@ -2462,9 +2611,7 @@ elif "Message Templates" in selected_page:
 
     if st.button("Save Template", type="primary", key="save_template_btn"):
         templates[selected_tpl_edit] = tpl_body
-        save_json(TEMPLATES_FILE, templates)
+        db_save_kv("templates_kv", templates)
         st.success(f"Template '{selected_tpl_edit}' saved successfully!")
         time.sleep(1)
         st.rerun()
-
-
