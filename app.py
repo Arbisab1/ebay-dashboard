@@ -388,7 +388,6 @@ logs = db_load_kv("logs_kv", {})
 order_notes = db_load_kv("order_notes_kv", {})
 feedback_logs = db_load_kv("feedback_logs_kv", {})
 
-# Compatibility wrappers for legacy JSON save calls
 def save_json(filepath, data):
     pass
 
@@ -538,7 +537,6 @@ def send_ebay_message(access_token, item_id, buyer_username, body_text):
     )
     return "<Ack>Success</Ack>" in res.text or "<Ack>Warning</Ack>" in res.text
 
-# --- EXTENDED PAGINATED FEEDBACK FETCHING (UP TO 10,000 REVIEWS) ---
 def fetch_all_ebay_feedbacks(access_token):
     all_parsed_feedbacks = []
     page_number = 1
@@ -601,7 +599,6 @@ def fetch_all_ebay_feedbacks(access_token):
 
     return all_parsed_feedbacks
 
-# --- TRADING API RESPOND TO FEEDBACK (RELIABLE XML) ---
 def send_xml_feedback_reply(access_token, feedback_id, target_user, reply_text):
     xml_payload = f"""<?xml version="1.0" encoding="utf-8"?>
     <RespondToFeedbackRequest xmlns="urn:ebay:apis:eBLBaseComponents">
